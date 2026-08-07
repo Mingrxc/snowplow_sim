@@ -23,8 +23,8 @@ control:
   feedforward_j_hat: 3.4
   feedforward_tc: 0.25
   update_rate: 1000
-  velocity_i: 1.5
-  velocity_p: 0.10
+  velocity_i: 3.0
+  velocity_p: 6.0
 drive:
   efficiency: 0.85
   gear_ratio: 50.0

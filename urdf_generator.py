@@ -90,8 +90,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "control": {
         "enable_ros2_control": True,
-        "velocity_p": 0.10,
-        "velocity_i": 1.5,
+        "velocity_p": 6.0,
+        "velocity_i": 3.0,
         "current_p": 0.5,
         "current_i": 10.0,
         "feedforward_j_hat": 3.4,
@@ -584,8 +584,8 @@ pmsm_controller:
     wheel_torque_constant: {drive.get('motor_torque_constant', 0.06)}
     max_torque: {drive.get('max_torque', 30.0)}
 
-    velocity_p: {control.get('velocity_p', 0.10)}
-    velocity_i: {control.get('velocity_i', 1.5)}
+    velocity_p: {control.get('velocity_p', 6.0)}
+    velocity_i: {control.get('velocity_i', 3.0)}
     current_p: {control.get('current_p', 0.5)}
     current_i: {control.get('current_i', 10.0)}
 

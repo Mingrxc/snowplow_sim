@@ -1,5 +1,7 @@
 # reproduce/modify 修改日志
 
+> 状态说明（2026-08-07）：本文记录的是逐轮修改历史，其中较早条目可能反映旧实现口径。当前默认实验口径已收束为项目书三地形 `concrete/sand/snow`，`/odom` 以 Gazebo 真值里程计为准，Python 代理实验仅作为辅助分析。
+
 主动模式：`reproduce/modify`。
 
 本轮目标是整理项目、清理明显中间文件、补齐复现路径，并做不改变论文方法语义的复现友好优化。
@@ -21,7 +23,7 @@
 | --- | --- |
 | `output/` | 默认 URDF/World 示例生成产物 |
 | `figures/` | 控制算法图表 |
-| `terrain_output/` | 地形实验旧结果 |
+| `terrain_output/` | 地形实验旧结果（历史保留，不作为新结果目录） |
 | `benchmark_output/` | benchmark 旧结果 |
 | `papers/` 和根目录 `.docx` | 论文、报告、指南、调研材料 |
 
@@ -30,8 +32,8 @@
 | 论文/报告依据 | 代码位置 | 当前结论 |
 | --- | --- | --- |
 | `扫雪机器人论文_初稿.docx` 第 2 章，段落 52-67：URDF、Link/Joint、驱动与传动参数 | `urdf_generator.py` | 基本对齐。代码可由 YAML 生成车体、履带、扫雪铲、传感器和 Gazebo 插件 |
-| `扫雪机器人论文_初稿.docx` 第 3 章，段落 68-83：Gazebo 多地形、摩擦、接触刚度/阻尼 | `world_generator.py` | 基本对齐。代码内置 asphalt/snow/sand/ice/grass/concrete 物理参数 |
-| `扫雪机器人论文_初稿.docx` 第 3.3 节，段落 84-91：LiDAR、IMU、里程计仿真 | `urdf_generator.py` | 部分对齐。LiDAR/IMU 已实现；里程计当前由 `diff_drive` 插件发布 `/odom`，论文初稿段落 91 提到 `gazebo_ros_p3d`，这里存在实现口径差异 |
+| `扫雪机器人论文_初稿.docx` 第 3 章，段落 68-83：Gazebo 多地形、摩擦、接触刚度/阻尼 | `world_generator.py` | 基本对齐。默认场景已切到 concrete/sand/snow，保留 asphalt/ice/grass 作为扩展预设 |
+| `扫雪机器人论文_初稿.docx` 第 3.3 节，段落 84-91：LiDAR、IMU、里程计仿真 | `urdf_generator.py` | 部分对齐。LiDAR/IMU 已实现；当前 `/odom` 按 Gazebo 真值里程计口径记录 |
 | `扫雪机器人论文_初稿.docx` 第 4.2-4.3 节，段落 98-106：TAVCC 地形自适应速度修正节点 | 当前缺少对应 ROS 节点 | 未完整对齐。不能声称已复现第 4 章 TAVCC |
 | `扫雪机器人论文_初稿.docx` 第 5 章，段落 107-124：PMSM、速度 PI、电流 PI、三通道前馈、ros_control | `control_prototype.py`, `snowplow_control/` | Python 原型基本对齐；C++ 控制器包待 Ubuntu/ROS2 实机环境编译审查 |
 | `调研现状.docx` 段落 6-7：仿真与真机话题名称一致 | `urdf_generator.py`, `docs/传感器接入调研报告.md` | 基本对齐，核心话题为 `/cmd_vel`, `/odom`, `/scan`, `/imu/data` |
@@ -192,4 +194,36 @@ python -B benchmark_runner.py --quick --output-dir results/smoke_benchmark
 - 按住 `j/a/左键` 原地左转，不应突然高速前进。
 - 按住 `l/d/右键` 原地右转，不应突然高速前进。
 - 空格能立即发布零速度。
-- 当前地形显示能随 `terrain_spawn.py asphalt/snow/sand/ice/grass` 改变。
+- 当前地形显示能随 `terrain_spawn.py concrete/sand/snow/slope` 改变。
+
+## 11. 键盘控制无响应修复
+
+问题现象：运行 `operator_console.py` 后按任意方向键，小车不产生可见运动。
+
+根因判断：
+
+- Gazebo `effort` command interface 接收的是轮端扭矩，不是电机电流。
+- 旧 C++ 控制器把 Gazebo joint `effort` state 反推成电流反馈，再进入 current PI；在仿真中容易产生正负扭矩高频抵消，表现为 `/cmd_vel` 有命令但车不动。
+- `operator_console.py` 默认 `input_timeout=0.30s` 太短，在 WSL/VSCode 终端中按键重复延迟可能超过这个窗口，导致刚按下就回零。
+
+已处理：
+
+- `snowplow_control/src/pmsm_cascade_controller.cpp`
+  - Gazebo 适配层改为速度 PI + 前馈扭矩直接输出 effort。
+  - 保留 PMSM 前馈负载估计框架。
+  - 不再把 Gazebo effort state 当作电流反馈。
+- `snowplow_control/include/snowplow_control/pmsm_cascade_controller.hpp`
+  - 同步控制函数签名。
+- `urdf_generator.py`、`examples/robot_default.yaml`、`snowplow_control/config/snowplow_control.yaml`
+  - 将 Gazebo effort 适配下的速度 PI 参数调到扭矩量级：`velocity_p=6.0`, `velocity_i=3.0`。
+- `operator_console.py`
+  - 默认输入超时改为 `1.00s`。
+  - 面板新增 `PUBLISHED` 行，确认实际发布到 `/cmd_vel` 的命令。
+- `guidance/README.md`
+  - 新增“按键后小车完全不动”的排查步骤。
+
+影响判断：
+
+- 不改变地形参数、世界布局、测速指标或 `/cmd_vel` 话题语义。
+- Gazebo 中的 C++ 控制器需要重新 `colcon build --packages-select snowplow_control`。
+- `output/urdf/ros2_control.yaml` 需要重新由 `urdf_generator.py` 生成。

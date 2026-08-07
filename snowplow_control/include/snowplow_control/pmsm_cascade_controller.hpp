@@ -37,7 +37,6 @@ private:
   struct WheelMemory
   {
     double speed_integral = 0.0;
-    double current_integral = 0.0;
     double load_torque_hat = 0.0;
     double previous_omega = 0.0;
     double previous_omega_ref = 0.0;
@@ -51,7 +50,6 @@ private:
   double control_wheel(
     double omega_ref,
     double omega,
-    double effort_measured,
     double dt,
     WheelMemory & memory);
 
@@ -73,7 +71,6 @@ private:
     WheelMemory & memory);
 
   double clamp(double value, double lower, double upper) const;
-  double measured_current_from_effort(double effort, double fallback_effort) const;
 
   std::vector<std::string> joint_names_;
 

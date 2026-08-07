@@ -146,9 +146,7 @@ controller_interface::return_type PMSMController::update(
   }
 
   const double omega_left = state_interfaces_[1].get_value();
-  const double effort_left = state_interfaces_[2].get_value();
   const double omega_right = state_interfaces_[4].get_value();
-  const double effort_right = state_interfaces_[5].get_value();
 
   const double linear = target_linear_velocity_.load();
   const double angular = target_angular_velocity_.load();
@@ -157,9 +155,9 @@ controller_interface::return_type PMSMController::update(
   const double omega_ref_right = (linear + angular * half_track) / wheel_radius_;
 
   const double command_left = control_wheel(
-    omega_ref_left, omega_left, effort_left, dt, left_);
+    omega_ref_left, omega_left, dt, left_);
   const double command_right = control_wheel(
-    omega_ref_right, omega_right, effort_right, dt, right_);
+    omega_ref_right, omega_right, dt, right_);
 
   command_interfaces_[0].set_value(command_left);
   command_interfaces_[1].set_value(command_right);
@@ -218,32 +216,25 @@ void PMSMController::reset()
 double PMSMController::control_wheel(
   double omega_ref,
   double omega,
-  double effort_measured,
   double dt,
   WheelMemory & memory)
 {
-  const double max_current = max_torque_ / wheel_torque_constant_;
-  const double iq_ref_pi = pi_step(
+  // Gazebo's effort command interface expects wheel torque directly. The
+  // current loop remains in the Python PMSM prototype; using Gazebo effort
+  // state as current feedback makes the simulated torque alternate signs.
+  const double velocity_torque = pi_step(
     omega_ref, omega,
     velocity_p_, velocity_i_,
-    dt, -max_current, max_current,
+    dt, -max_torque_, max_torque_,
     memory.speed_integral);
 
-  const double iq_measured = measured_current_from_effort(
-    effort_measured, memory.previous_effort);
-  const double electrical_torque = wheel_torque_constant_ * iq_measured;
   const double d_omega_ref_dt = (omega_ref - memory.previous_omega_ref) / dt;
   const double feedforward_torque = compute_feedforward(
-    d_omega_ref_dt, omega, electrical_torque, dt, memory);
-  const double iq_ref = clamp(
-    iq_ref_pi + feedforward_torque / wheel_torque_constant_,
-    -max_current, max_current);
+    d_omega_ref_dt, omega, memory.previous_effort, dt, memory);
 
-  const double effort_command = pi_step(
-    iq_ref, iq_measured,
-    current_p_, current_i_,
-    dt, -max_torque_, max_torque_,
-    memory.current_integral);
+  const double effort_command = clamp(
+    velocity_torque + feedforward_torque,
+    -max_torque_, max_torque_);
 
   memory.previous_omega_ref = omega_ref;
   return effort_command;
@@ -300,14 +291,6 @@ double PMSMController::compute_feedforward(
 double PMSMController::clamp(double value, double lower, double upper) const
 {
   return std::min(std::max(value, lower), upper);
-}
-
-double PMSMController::measured_current_from_effort(
-  double effort,
-  double fallback_effort) const
-{
-  const double usable_effort = std::isfinite(effort) ? effort : fallback_effort;
-  return usable_effort / wheel_torque_constant_;
 }
 
 }  // namespace snowplow_control

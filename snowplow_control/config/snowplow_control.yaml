@@ -22,8 +22,10 @@ pmsm_controller:
     wheel_torque_constant: 0.06
     max_torque: 30.0
 
-    velocity_p: 0.10
-    velocity_i: 1.50
+    # Gazebo effort interface receives wheel torque directly.
+    # These gains are therefore torque-scale velocity PI gains.
+    velocity_p: 6.0
+    velocity_i: 3.0
     current_p: 0.50
     current_i: 10.0
 

@@ -15,12 +15,19 @@ This repository now has one main simulation route:
 5. Run `operator_console.py`
 6. Use `terrain_spawn.py` + `gazebo_speed_test.py` for terrain tests
 
+Default project-plan terrains:
+
+- `concrete`
+- `sand`
+- `snow`
+
 ## Clean rules
 
 - Do not commit `output/`
 - Do not commit `results/`
 - Do not mix old benchmark figures with new runs
 - Keep the control route unified
+- Keep Python proxy results separate from Gazebo `/odom` measurements
 
 ## Main files
 

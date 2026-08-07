@@ -1,27 +1,29 @@
-# 多地形分区仿真场景（默认布局）
-# 五大测试区自动铺设在场地四周，中间为沥青对照组
+# 项目书默认多地形分区仿真场景
+# 三条测试带：沙土/泥沙路面、水泥/硬化路面、冰雪路面
 
 world_name: "snowplow_multi_terrain"
 
 ground_size: 30.0
 
-# 不指定 terrain_zones 则自动使用默认分区
+# 不指定 terrain_zones 时，world_generator.py 自动使用三地形默认分区：
+#   sand     x=-10, y=0, width=10, depth=24
+#   concrete x=0,   y=0, width=10, depth=24
+#   snow     x=10,  y=0, width=10, depth=24
+#
 # 如果需要自定义布局，取消注释下面内容：
 # terrain_zones:
-#   - {type: asphalt, x: 0, y: 0, width: 12, depth: 12, thickness: 0.015}
-#   - {type: snow,   x: 10, y: 0, width: 10, depth: 14, thickness: 0.02}
-#   - {type: sand,   x: -10, y: 0, width: 10, depth: 14, thickness: 0.02}
-#   - {type: ice,    x: 0, y: 10, width: 14, depth: 10, thickness: 0.01}
-#   - {type: grass,  x: 0, y: -10, width: 14, depth: 10, thickness: 0.015}
+#   - {type: sand,     x: -10, y: 0, width: 10, depth: 24, thickness: 0.02}
+#   - {type: concrete, x: 0,   y: 0, width: 10, depth: 24, thickness: 0.015}
+#   - {type: snow,     x: 10,  y: 0, width: 10, depth: 24, thickness: 0.02}
 
 slope:
   enabled: true
-  x: 10
+  x: 0
   y: 10
   width: 4.0
   depth: 8.0
   angle_deg: 10
-  terrain_type: asphalt
+  terrain_type: concrete
 
 visual_detail:
   enabled: true

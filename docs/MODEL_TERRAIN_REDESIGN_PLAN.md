@@ -1,5 +1,7 @@
 # 模型与地形视觉整改计划
 
+> 当前状态说明（2026-08-07）：本文是历史整改计划，部分表述来自旧路线。当前主线已固定为 `ros2_control + effort interface`，`/odom` 由 Gazebo p3d 真值里程计提供；默认世界已收束为项目书三地形 `concrete/sand/snow`。
+
 主动模式：`reproduce/modify`。
 
 本轮目标是优化铲雪车模型和 Gazebo 地形观感，同时保持复现语义稳定。第一轮只改视觉层和文档，不改变：
@@ -16,7 +18,7 @@
 | --- | --- | --- | --- |
 | `扫雪机器人论文_初稿.docx` 第 2 章，2.1-2.2 | URDF 应包含车体、履带行走机构、扫雪铲、传感器、质量/惯量和关节关系 | `urdf_generator.py` | 主结构对齐，但外观主要由 box/cylinder 组成，视觉细节不足 |
 | `扫雪机器人论文_初稿.docx` 第 3 章，3.1-3.2 | Gazebo 多地形应覆盖沥青、雪地、沙地、冰面、草地、坡道，并配置摩擦、刚度、阻尼 | `world_generator.py` | 物理参数基本对齐，但地形外观是单色平板 |
-| `扫雪机器人论文_初稿.docx` 第 3.3 节 | LiDAR、IMU、里程计为核心仿真传感器 | `urdf_generator.py` | LiDAR/IMU 已实现，里程计由 diff_drive 插件发布 `/odom` |
+| `扫雪机器人论文_初稿.docx` 第 3.3 节 | LiDAR、IMU、里程计为核心仿真传感器 | `urdf_generator.py` | LiDAR/IMU 已实现，当前 `/odom` 由 Gazebo p3d 真值插件发布 |
 | `扫雪机器人论文_初稿.docx` 第 4 章 | TAVCC 地形自适应速度修正节点 | 当前代码缺失完整 ROS 节点 | 本轮不擅自补写，避免改变实验语义 |
 | `扫雪机器人论文_初稿.docx` 第 5 章 | PMSM 速度环、电流环、前馈控制 | `control_prototype.py`, `snowplow_control/` | Python 原型和 C++ 插件骨架存在；Ubuntu 编译验证由用户执行 |
 

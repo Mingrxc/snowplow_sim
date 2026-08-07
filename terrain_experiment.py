@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-terrain_experiment.py — 自动地形对比实验脚本
+terrain_experiment.py — Python 地形代理/灵敏度实验脚本
 
-在 Gazebo 中驱动小车在不同地形上跑相同轨迹，录制 odom/cmd_vel 数据，
-对比各地形下的速度跟踪精度、滑移率等指标。
+本脚本不控制 Gazebo，也不读取 Gazebo 接触/里程计数据。它只使用
+control_prototype.py 的 PMSM 轮端模型和代理负载参数，快速观察不同地形
+负载假设下的速度跟踪趋势。正式 Gazebo 地形数据请使用：
+
+    terrain_spawn.py + gazebo_speed_test.py
 
 用法:
-    python3 terrain_experiment.py                     # 纯 Python 模拟模式，用 PMSM 模型测试
-    python3 terrain_experiment.py --gazebo            # Gazebo 模式：通过 ROS 2 话题控制真实仿真
-    python3 terrain_experiment.py --output-dir results/terrain_run
+    python3 terrain_experiment.py
+    python3 terrain_experiment.py --include-extended
+    python3 terrain_experiment.py --output-dir results/proxy_terrain/my_run
 
 依赖:
     pip install numpy matplotlib pyyaml
@@ -21,26 +24,62 @@ import csv
 import time
 import argparse
 import math
+from datetime import datetime
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from world_generator import TERRAIN_PRESETS
+
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 
 # ================================================================
-# 地形参数（与 world_generator.py 一致）
+# 地形参数
 # ================================================================
 
-TERRAIN_PARAMS = {
-    "asphalt":  {"mu": 0.75, "mu2": 1.50, "load_factor": 1.0,  "color": [0.15, 0.15, 0.15], "label": "沥青", "plot_label": "Asphalt"},
-    "concrete": {"mu": 0.70, "mu2": 1.40, "load_factor": 1.05, "color": [0.55, 0.55, 0.55], "label": "水泥", "plot_label": "Concrete"},
-    "grass":    {"mu": 0.60, "mu2": 1.20, "load_factor": 1.3,  "color": [0.25, 0.60, 0.25], "label": "草地", "plot_label": "Grass"},
-    "sand":     {"mu": 0.50, "mu2": 1.00, "load_factor": 1.8,  "color": [0.85, 0.75, 0.55], "label": "沙地", "plot_label": "Sand"},
-    "snow":     {"mu": 0.30, "mu2": 0.60, "load_factor": 2.5,  "color": [0.90, 0.90, 0.90], "label": "雪地", "plot_label": "Snow"},
-    "ice":      {"mu": 0.08, "mu2": 0.16, "load_factor": 4.0,  "color": [0.75, 0.90, 0.95], "label": "冰面", "plot_label": "Ice"},
+PROXY_LOAD_FACTORS = {
+    "asphalt": 1.0,
+    "concrete": 1.05,
+    "grass": 1.3,
+    "sand": 1.8,
+    "snow": 2.5,
+    "ice": 4.0,
 }
+
+TERRAIN_LABELS = {
+    "asphalt": ("沥青", "Asphalt"),
+    "concrete": ("水泥", "Concrete"),
+    "grass": ("草地", "Grass"),
+    "sand": ("沙地", "Sand"),
+    "snow": ("冰雪", "Snow/Ice"),
+    "ice": ("冰面", "Ice"),
+}
+
+
+def build_proxy_terrain_params() -> dict:
+    params = {}
+    for terrain, load_factor in PROXY_LOAD_FACTORS.items():
+        preset = TERRAIN_PRESETS[terrain]
+        label, plot_label = TERRAIN_LABELS[terrain]
+        params[terrain] = {
+            "mu": preset["mu"],
+            "mu2": preset["mu2"],
+            "load_factor": load_factor,
+            "color": list(preset["color"][:3]),
+            "label": label,
+            "plot_label": plot_label,
+        }
+    return params
+
+
+TERRAIN_PARAMS = build_proxy_terrain_params()
+
+PROJECT_TERRAINS = ("concrete", "sand", "snow")
+EXTENDED_TERRAINS = tuple(
+    terrain for terrain in TERRAIN_PARAMS if terrain not in PROJECT_TERRAINS
+)
 
 
 # ================================================================
@@ -168,12 +207,14 @@ def compute_terrain_metrics(t, omega_ref, omega, wheel_radius=0.15):
 # 实验结果汇总表
 # ================================================================
 
-def run_all_terrains(enable_ff=True, v_cmd=0.5):
+def run_all_terrains(enable_ff=True, v_cmd=0.5, terrain_names=None):
     """对每种地形跑一遍仿真"""
     results = {}
     all_traces = {}
 
-    for tname, tparams in TERRAIN_PARAMS.items():
+    terrain_names = terrain_names or PROJECT_TERRAINS
+    for tname in terrain_names:
+        tparams = TERRAIN_PARAMS[tname]
         t, ref, omega, TL = simulate_terrain(tname, tparams, enable_ff=enable_ff, v_cmd=v_cmd)
         metrics = compute_terrain_metrics(t, ref, omega)
         results[tname] = metrics
@@ -182,15 +223,16 @@ def run_all_terrains(enable_ff=True, v_cmd=0.5):
     return results, all_traces
 
 
-def print_results(results, ff_on=True):
+def print_results(results, ff_on=True, terrain_names=None):
     """打印结果表格"""
+    terrain_names = terrain_names or list(results)
     header = f"{'地形':8s} {'RMSE(m/s)':>10s} {'速度达成%':>9s} {'滑移%':>7s} {'最高速度(m/s)':>12s} {'稳态误差':>8s}"
     print("\n" + "=" * 70)
     print(f"  地形对比实验 (FF={'ON' if ff_on else 'OFF'}, v_cmd=0.5 m/s)")
     print("=" * 70)
     print(header)
     print("-" * 70)
-    for tname in TERRAIN_PARAMS:
+    for tname in terrain_names:
         r = results.get(tname, {})
         print(f"{TERRAIN_PARAMS[tname]['label']:8s} {r.get('rmse',0):10.4f} {r.get('speed_ratio',0)*100:9.1f} {r.get('slip',0)*100:7.1f} {r.get('v_achieved',0):12.3f} {r.get('steady_error',0):8.4f}")
     print("-" * 70)
@@ -200,7 +242,12 @@ def print_results(results, ff_on=True):
     worst = max(results, key=lambda t: results[t]["rmse"])
     print(f"\n  最佳地形: {TERRAIN_PARAMS[best]['label']} (RMSE={results[best]['rmse']:.4f})")
     print(f"  最差地形: {TERRAIN_PARAMS[worst]['label']} (RMSE={results[worst]['rmse']:.4f})")
-    print(f"  摩擦系数与RMSE相关系数: {np.corrcoef([TERRAIN_PARAMS[t]['mu'] for t in TERRAIN_PARAMS], [results[t]['rmse'] for t in TERRAIN_PARAMS])[0,1]:.3f}")
+    if len(terrain_names) >= 2:
+        corr = np.corrcoef(
+            [TERRAIN_PARAMS[t]['mu'] for t in terrain_names],
+            [results[t]['rmse'] for t in terrain_names],
+        )[0, 1]
+        print(f"  摩擦系数与RMSE相关系数: {corr:.3f}")
 
     return results
 
@@ -209,16 +256,17 @@ def print_results(results, ff_on=True):
 # 绘图
 # ================================================================
 
-def plot_terrain_comparison(ff_data, noff_data, save_dir=None):
+def plot_terrain_comparison(ff_data, noff_data, save_dir=None, terrain_names=None):
     """绘制所有地形的速度响应对比图"""
     wheel_radius = 0.15
+    terrain_names = terrain_names or list(ff_data or noff_data or TERRAIN_PARAMS)
+    cols = min(3, max(1, len(terrain_names)))
+    rows = int(math.ceil(len(terrain_names) / cols))
 
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-    axes = axes.flatten()
+    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 4.5 * rows))
+    axes = np.atleast_1d(axes).flatten()
 
-    for idx, tname in enumerate(TERRAIN_PARAMS):
-        if idx >= 6:
-            break
+    for idx, tname in enumerate(terrain_names):
         ax = axes[idx]
         tparams = TERRAIN_PARAMS[tname]
 
@@ -237,6 +285,9 @@ def plot_terrain_comparison(ff_data, noff_data, save_dir=None):
         ax.grid(True, alpha=0.3)
         ax.set_ylim(-0.1, 0.8)
 
+    for ax in axes[len(terrain_names):]:
+        ax.axis('off')
+
     fig.suptitle('Terrain Comparison: Velocity Tracking', fontsize=14, y=1.01)
     plt.tight_layout()
     if save_dir:
@@ -247,9 +298,9 @@ def plot_terrain_comparison(ff_data, noff_data, save_dir=None):
     plt.close()
 
 
-def plot_bar_chart(ff_results, noff_results, save_dir=None):
+def plot_bar_chart(ff_results, noff_results, save_dir=None, terrain_names=None):
     """绘制柱状图：各地形 RMSE 和 speed_ratio 对比"""
-    terrains = list(TERRAIN_PARAMS.keys())
+    terrains = terrain_names or list(ff_results)
     labels = [TERRAIN_PARAMS[t]['plot_label'] for t in terrains]
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -292,8 +343,9 @@ def plot_bar_chart(ff_results, noff_results, save_dir=None):
     plt.close()
 
 
-def save_csv(results_ff, results_noff, save_dir):
+def save_csv(results_ff, results_noff, save_dir, terrain_names=None):
     """保存 CSV"""
+    terrain_names = terrain_names or list(results_ff)
     fp = os.path.join(save_dir, 'terrain_results.csv')
     columns = ["terrain", "label", "mu", "load_factor",
                "rmse_ff", "max_error_ff", "speed_ratio_ff", "slip_ff", "steady_error_ff",
@@ -302,7 +354,7 @@ def save_csv(results_ff, results_noff, save_dir):
     with open(fp, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
-        for tname in TERRAIN_PARAMS:
+        for tname in terrain_names:
             tp = TERRAIN_PARAMS[tname]
             rf = results_ff[tname]
             rn = results_noff[tname]
@@ -326,58 +378,77 @@ def save_csv(results_ff, results_noff, save_dir):
 # ================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='自动地形对比实验')
-    parser.add_argument('--gazebo', action='store_true', help='Gazebo 模式（需要 ROS 2）')
+    parser = argparse.ArgumentParser(description='Python 地形代理/灵敏度实验')
+    parser.add_argument('--gazebo', action='store_true',
+                        help='只打印 Gazebo 正式实验入口提示，不自动控制 Gazebo')
+    parser.add_argument('--include-extended', action='store_true',
+                        help='额外运行 asphalt/grass/ice 扩展对照；默认只跑项目书三地形')
     parser.add_argument('--no-save', action='store_true', help='只打印结果，不保存图表和 CSV')
     parser.add_argument('--output-dir', default=None,
-                        help='输出目录，默认: ./terrain_output')
+                        help='输出目录，默认: ./results/proxy_terrain/<time>')
     args = parser.parse_args()
 
-    save_dir = args.output_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'terrain_output')
+    terrain_names = list(PROJECT_TERRAINS)
+    if args.include_extended:
+        terrain_names.extend(EXTENDED_TERRAINS)
+
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_dir = args.output_dir or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'results', 'proxy_terrain', run_id,
+    )
     if not args.no_save:
         os.makedirs(save_dir, exist_ok=True)
 
     if args.gazebo:
-        print("Gazebo 模式：此入口只提供手动实验提示，不会自动控制 Gazebo。")
+        print("Gazebo 正式实验：此入口只提供提示，不会自动控制 Gazebo。")
         print("请先启动 Gazebo，再按地形名称重新 spawn，然后运行固定时长测速脚本。")
         print("\n示例:")
-        print("  python3 terrain_spawn.py snow")
-        print("  python3 gazebo_speed_test.py --label snow --speed 0.20 "
+        print("  python3 terrain_spawn.py concrete")
+        print("  python3 gazebo_speed_test.py --label concrete --speed 0.20 "
               "--settle 2 --duration 5 "
-              "--output results/gazebo_terrain/terrain_speed.csv")
-        print("\n把 snow 替换为 asphalt/sand/ice/grass，其他参数保持一致。")
+              "--run-dir results/gazebo_terrain/concrete_020")
+        print("\n把 concrete 替换为 sand/snow，其他参数保持一致。")
         print("不要使用单次非零 `ros2 topic pub ... -1`，结束时必须发零速度。")
         return
 
     print("=" * 70)
-    print("  扫雪车地形对比实验 — Python 仿真模式")
-    print("  使用轮端 PMSM dq 模型模拟不同摩擦系数地面的速度跟踪")
+    print("  扫雪车地形对比实验 — Python 代理模式")
+    print("  默认只运行项目书三地形；结果不能替代 Gazebo 实测")
     print("=" * 70)
 
     # Run FF ON
     print("\n[1/2] Running with FeedForward ON ...")
-    results_ff, traces_ff = run_all_terrains(enable_ff=True)
-    print_results(results_ff, ff_on=True)
+    results_ff, traces_ff = run_all_terrains(
+        enable_ff=True, terrain_names=terrain_names
+    )
+    print_results(results_ff, ff_on=True, terrain_names=terrain_names)
 
     # Run FF OFF
     print("\n[2/2] Running with FeedForward OFF ...")
-    results_noff, traces_noff = run_all_terrains(enable_ff=False)
-    print_results(results_noff, ff_on=False)
+    results_noff, traces_noff = run_all_terrains(
+        enable_ff=False, terrain_names=terrain_names
+    )
+    print_results(results_noff, ff_on=False, terrain_names=terrain_names)
 
     # Comparison summary
     print("\n" + "=" * 70)
     print("  FF 改善汇总")
     print("=" * 70)
-    for tname in TERRAIN_PARAMS:
+    for tname in terrain_names:
         imp = (results_noff[tname]['rmse'] - results_ff[tname]['rmse']) / max(results_noff[tname]['rmse'], 1e-9) * 100
         print(f"  {TERRAIN_PARAMS[tname]['label']:6s}: RMSE {results_noff[tname]['rmse']:.4f} -> {results_ff[tname]['rmse']:.4f} ({imp:+.1f}%)  "
               f"Speed {results_noff[tname]['speed_ratio']*100:.0f}% -> {results_ff[tname]['speed_ratio']*100:.0f}%")
 
     # Plots
     if not args.no_save:
-        plot_terrain_comparison(traces_ff, traces_noff, save_dir)
-        plot_bar_chart(results_ff, results_noff, save_dir)
-        save_csv(results_ff, results_noff, save_dir)
+        plot_terrain_comparison(
+            traces_ff, traces_noff, save_dir, terrain_names=terrain_names
+        )
+        plot_bar_chart(
+            results_ff, results_noff, save_dir, terrain_names=terrain_names
+        )
+        save_csv(results_ff, results_noff, save_dir, terrain_names=terrain_names)
 
     if args.no_save:
         print("\n[OK] 实验完成。未保存输出。")

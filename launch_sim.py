@@ -20,8 +20,20 @@ def check_dependencies(start_controllers: bool) -> bool:
     required = ["xacro", "ros2", "gazebo"]
     issues = [tool for tool in required if shutil.which(tool) is None]
 
+    result = subprocess.run(
+        ["ros2", "pkg", "prefix", "robot_state_publisher"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        issues.append("ROS package missing: robot_state_publisher")
+
     if start_controllers:
-        for package in ("controller_manager", "joint_state_broadcaster", "gazebo_ros2_control"):
+        for package in (
+            "controller_manager",
+            "joint_state_broadcaster",
+            "gazebo_ros2_control",
+        ):
             result = subprocess.run(
                 ["ros2", "pkg", "prefix", package],
                 capture_output=True,
@@ -160,6 +172,22 @@ def start_gazebo(world_path: Path, verbose: bool) -> subprocess.Popen:
     return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def start_robot_state_publisher(urdf_path: Path, verbose: bool) -> subprocess.Popen:
+    command = [
+        "ros2",
+        "run",
+        "robot_state_publisher",
+        "robot_state_publisher",
+        str(urdf_path),
+        "--ros-args",
+        "-p",
+        "use_sim_time:=true",
+    ]
+    if verbose:
+        return subprocess.Popen(command)
+    return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Launch the snowplow Gazebo simulation with ros2_control."
@@ -205,12 +233,23 @@ def main() -> None:
         print("\nManual run:")
         print(f"  gazebo -s libgazebo_ros_init.so -s libgazebo_ros_factory.so {world_path}")
         print(
+            "  ros2 run robot_state_publisher robot_state_publisher "
+            f"{urdf_path} --ros-args -p use_sim_time:=true"
+        )
+        print(
             "  ros2 run gazebo_ros spawn_entity.py "
             f"-file {urdf_path} -entity {entity_name} -x {args.x} -y {args.y} -z {args.z}"
         )
         print("  ros2 run controller_manager spawner joint_state_broadcaster -c /controller_manager")
         print("  ros2 run controller_manager spawner pmsm_controller -c /controller_manager")
         return
+
+    print("[launch_sim] Starting robot_state_publisher ...")
+    start_robot_state_publisher(urdf_path, args.verbose)
+    print("[launch_sim] Waiting for /robot_state_publisher/get_parameters ...")
+    if not wait_for_service("/robot_state_publisher/get_parameters", 15.0):
+        print("[launch_sim] Timed out waiting for robot_state_publisher.")
+        sys.exit(1)
 
     print(f"[launch_sim] Starting Gazebo: {world_path}")
     start_gazebo(world_path, args.verbose)

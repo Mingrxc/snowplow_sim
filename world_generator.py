@@ -24,7 +24,11 @@ from typing import Dict, Any, List, Tuple, Optional
 
 
 # ============================================================
-# 地面物理参数库 — 全部来自论文第三章
+# 地面物理参数库
+#
+# 项目计划书要求的默认三类场景为：
+# 1) 水泥/硬化路面；2) 泥沙/沙土路面；3) 冰雪路面。
+# 其余 asphalt/ice/grass 保留为扩展对照预设，不进入默认项目书场景。
 # ============================================================
 
 TERRAIN_PRESETS = {
@@ -40,8 +44,8 @@ TERRAIN_PRESETS = {
         "max_vel": 0.1,
     },
     "snow": {
-        "name": "积雪区",
-        "description": "松软低附着路面，核心测试场景",
+        "name": "冰雪路面",
+        "description": "冰雪/积雪低附着路面，核心测试场景",
         "color": (0.95, 0.95, 0.95, 1.0),   # white
         "mu": 0.30,
         "mu2": 0.60,
@@ -172,7 +176,7 @@ DEFAULT_WORLD_CONFIG = {
         "width": 5.0,
         "depth": 10.0,
         "angle_deg": 10.0,         # 坡度角（度）
-        "terrain_type": "asphalt",
+        "terrain_type": "concrete",
     },
     "lighting": {
         "sun_pos": [10, 10, 30],
@@ -295,15 +299,15 @@ def sdf_terrain_visual_details(zone: dict, preset: dict, zone_index: int,
     ])
 
     feature_z = thickness / 2 + patch_h * 1.8 + 0.002
-    if terrain_type == "asphalt":
+    if terrain_type in ("asphalt", "concrete"):
         parts.append(sdf_visual_box(
-            f"asphalt_center_line_{zone_index}",
+            f"{terrain_type}_center_line_{zone_index}",
             f"0 0 {feature_z:.4f}",
             f"{width * 0.70:.3f} 0.070 0.003",
             (0.95, 0.78, 0.12, 1.0),
         ))
         parts.append(sdf_visual_box(
-            f"asphalt_stop_mark_{zone_index}",
+            f"{terrain_type}_stop_mark_{zone_index}",
             f"{-width * 0.22:.3f} {depth * 0.18:.3f} {feature_z + 0.001:.4f}",
             f"{width * 0.18:.3f} 0.050 0.003",
             (0.95, 0.95, 0.88, 1.0),
@@ -680,15 +684,13 @@ def sdf_footer() -> str:
 # ============================================================
 
 def default_zones(size: float) -> List[Dict]:
-    """生成默认分区布局：沥青在中间，雪地/沙地/冰面/草地在四周"""
-    half = size / 2
-    q = size / 4
+    """生成项目书默认三地形布局：水泥、沙土、冰雪三条测试带。"""
+    lane_width = size / 3
+    lane_depth = size * 0.8
     return [
-        {"type": "asphalt", "x": 0, "y": 0, "width": size * 0.4, "depth": size * 0.4, "thickness": 0.015},
-        {"type": "snow", "x": q*3, "y": 0, "width": q*2, "depth": half, "thickness": 0.02},
-        {"type": "sand", "x": -q*3, "y": 0, "width": q*2, "depth": half, "thickness": 0.02},
-        {"type": "ice", "x": 0, "y": q*3, "width": half, "depth": q*2, "thickness": 0.01},
-        {"type": "grass", "x": 0, "y": -q*3, "width": half, "depth": q*2, "thickness": 0.015},
+        {"type": "sand", "x": -lane_width, "y": 0, "width": lane_width, "depth": lane_depth, "thickness": 0.02},
+        {"type": "concrete", "x": 0, "y": 0, "width": lane_width, "depth": lane_depth, "thickness": 0.015},
+        {"type": "snow", "x": lane_width, "y": 0, "width": lane_width, "depth": lane_depth, "thickness": 0.02},
     ]
 
 
@@ -762,12 +764,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 内置地形类型:
-  asphalt  标准沥青路面 (μ=0.75)
-  snow     积雪区 (μ=0.30)
-  sand     沙地区 (μ=0.50)
-  ice      冰面区 (μ=0.08)
-  grass    草地 (μ=0.60)
-  concrete 水泥路面 (μ=0.70)
+  concrete 水泥/硬化路面 (μ=0.70) [项目书默认]
+  sand     沙土/泥沙路面 (μ=0.50) [项目书默认]
+  snow     冰雪/积雪路面 (μ=0.30) [项目书默认]
+  asphalt  标准沥青路面 (μ=0.75) [扩展对照]
+  ice      冰面区 (μ=0.08) [扩展对照]
+  grass    草地 (μ=0.60) [扩展对照]
 
 示例:
   python3 world_generator.py examples/terrain_multi.yaml

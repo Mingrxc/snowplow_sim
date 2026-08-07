@@ -6,7 +6,7 @@ from the project directory on Ubuntu without a colcon install step.
 
 The terminal controller is a "hold to move" interface:
 
-* a direction key must keep producing terminal input to keep the command alive;
+* a direction key refreshes the command for a short safety window;
 * when no direction input arrives before the timeout, zero velocity is sent;
 * the node publishes directly to /cmd_vel and must not be run together with
   another publisher that is also driving the same topic.
@@ -207,6 +207,8 @@ class OperatorConsole(Node):
         self.command_name = "WAITING"
         self.command_linear = 0.0
         self.command_angular = 0.0
+        self.published_linear = 0.0
+        self.published_angular = 0.0
         self.manual_stop = False
         self.quit_requested = False
         self.last_publish_at = 0.0
@@ -280,6 +282,8 @@ class OperatorConsole(Node):
     def publish_command(self, now: float) -> str:
         command = self._safe_command(now)
         self.publisher.publish(command)
+        self.published_linear = float(command.linear.x)
+        self.published_angular = float(command.angular.z)
         self.last_publish_at = now
         if command.linear.x == 0.0 and command.angular.z == 0.0:
             if self.manual_stop:
@@ -313,7 +317,7 @@ class OperatorConsole(Node):
             "\x1b[2J\x1b[H",
             "SNOWPLOW OPERATOR CONSOLE",
             "=========================",
-            "Hold a direction key to move; release it to stop.",
+            "Press or hold a direction key to move; Space stops immediately.",
             "i/w or Up: forward    k/s or Down: backward",
             "j/a or Left: turn left    l/d or Right: turn right",
             "Space: stop immediately    q or Ctrl+C: quit and stop",
@@ -322,6 +326,8 @@ class OperatorConsole(Node):
             f"last_key={self.last_key!r}",
             f"TARGET   : vx={self.command_linear:+.3f} m/s  "
             f"wz={self.command_angular:+.3f} rad/s",
+            f"PUBLISHED: vx={self.published_linear:+.3f} m/s  "
+            f"wz={self.published_angular:+.3f} rad/s",
             f"INPUT AGE: {input_age:.3f} s"
             if math.isfinite(input_age)
             else "INPUT AGE: -",
@@ -377,7 +383,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input-timeout",
         type=float,
-        default=0.30,
+        default=1.00,
         help="Seconds without a repeated key before publishing zero.",
     )
     parser.add_argument("--publish-rate", type=float, default=20.0)

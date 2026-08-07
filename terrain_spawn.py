@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Delete and respawn the robot at a named terrain zone.
 
-The coordinates match world_generator.py's default 30 m multi-terrain layout.
+The coordinates match world_generator.py's default 30 m three-terrain layout.
 This is a positioning helper only; it does not change terrain physics or the
 speed metric.
 """
@@ -15,12 +15,10 @@ from rclpy.node import Node
 
 
 TERRAIN_POSES = {
-    "asphalt": (0.0, 0.0),
-    "snow": (22.5, 0.0),
-    "sand": (-22.5, 0.0),
-    "ice": (0.0, 22.5),
-    "grass": (0.0, -22.5),
-    "slope": (10.0, 10.0),
+    "sand": (-10.0, 0.0),
+    "concrete": (0.0, 0.0),
+    "snow": (10.0, 0.0),
+    "slope": (0.0, 10.0),
 }
 
 
