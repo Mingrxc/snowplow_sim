@@ -37,6 +37,7 @@ snowplow_sim/
 ├── world_generator.py
 ├── launch_sim.py
 ├── operator_console.py
+├── dynamic_friction_console.py
 ├── terrain_spawn.py
 ├── gazebo_speed_test.py
 ├── control_prototype.py
@@ -81,8 +82,9 @@ snowplow_sim/
 
 - 生成多地形区域；
 - 默认生成水泥/硬化、沙土/泥沙、冰雪三条测试带；
+- 可额外生成 `dynamic_pad` 动态摩擦扩展实验地块；
 - 保留沥青、冰面、草地作为扩展对照预设；
-- 生成障碍物和坡道；
+- 生成障碍物；
 - 避免把 Gazebo factory 插件硬写进 world。
 
 ### `launch_sim.py`
@@ -106,6 +108,7 @@ ROS 2 C++ 控制器包。
 核心文件：
 
 - `src/pmsm_cascade_controller.cpp`
+- `src/dynamic_friction_plugin.cpp`
 - `include/snowplow_control/pmsm_cascade_controller.hpp`
 - `config/snowplow_control.yaml`
 - `snowplow_control_plugin.xml`
@@ -137,6 +140,16 @@ Gazebo 适配口径：
 /cmd_vel
 ```
 
+动态摩擦插件：
+
+- 插件库：`libsnowplow_dynamic_friction_plugin.so`
+- 控制话题：`/dynamic_friction/set`
+- 状态话题：`/dynamic_friction/state`
+- 消息类型：`std_msgs/Float64MultiArray`
+- 数据格式：`[mu, mu2]`
+
+该插件只作用于 `dynamic_friction_pad` 模型，不改变默认三地形本身的固定摩擦参数。
+
 ### `operator_console.py`
 
 终端交互控制台。
@@ -157,6 +170,19 @@ Gazebo 适配口径：
 
 注意：当前模型用圆柱轮、四轮履带代理 effort 和接触参数近似履带。真实履带车通过左右履带差速和地面横向滑移转向，因此 `examples/robot_default.yaml` 中的 `tracks.contact_mu2` 和 `tracks.contact_slip2` 会明显影响 `a/d` 转向手感。该参数属于 Gazebo 工程近似，项目书未指定具体数值。
 
+### `dynamic_friction_console.py`
+
+动态摩擦地块控制台。
+
+关键职责：
+
+- 作为终端 3 运行；
+- 输入新的 `mu mu2`；
+- 发布到 `/dynamic_friction/set`；
+- 订阅 `/dynamic_friction/state`，显示 Gazebo 插件当前生效配置。
+
+该脚本只用于扩展实验地块 `dynamic_pad`，不参与默认三地形测速结论。
+
 ### `terrain_spawn.py`
 
 地形切换辅助脚本。
@@ -172,7 +198,8 @@ Gazebo 适配口径：
 - `concrete`
 - `sand`
 - `snow`
-- `slope`
+
+- `dynamic_pad`，扩展动态摩擦测试地块
 
 ### `gazebo_speed_test.py`
 

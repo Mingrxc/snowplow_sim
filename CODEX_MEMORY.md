@@ -31,12 +31,12 @@
 
 - `world_generator.py`
   - 默认分区由五地形旧布局改为三条项目书测试带
-  - 坡道默认地形由 `asphalt` 改为 `concrete`
+  - 阶梯坡道已从活动代码中彻底删除
   - `snow` 文案改为冰雪/积雪低附着路面
 - `examples/terrain_multi.yaml`
   - 注释和示例布局同步为三地形
 - `terrain_spawn.py`
-  - spawn 坐标同步为 `concrete/sand/snow/slope`
+  - spawn 坐标同步为 `concrete/sand/snow/dynamic_pad`
   - 去掉默认世界中不可靠的 `asphalt/ice/grass` 快捷入口
 - `gazebo_speed_test.py`
   - 从单一速度均值扩展为速度误差、横向偏差、航向变化、路径长度等指标
@@ -113,3 +113,24 @@ source install/setup.bash
   - `pmsm_cascade_controller.cpp` 兼容 2/4 关节；
   - 四轮配置下每侧 effort 平均分给前后两个接触轮，避免动力翻倍。
 - 注意：这改变 C++ 控制器接口，必须重新 `colcon build --packages-select snowplow_control`，再重新生成 URDF 并重启 Gazebo。
+
+## 2026-08-07 动态摩擦地块记忆
+
+- 用户明确不要多块固定摩擦地块，要同一块地运行中动态改 `mu/mu2`。
+- 当前设计：保留 `concrete/sand/snow`，额外新增 `dynamic_pad`，默认在 `x=0, y=-18`。
+- C++ 插件：`snowplow_control/src/dynamic_friction_plugin.cpp`。
+- 插件库：`libsnowplow_dynamic_friction_plugin.so`。
+- 终端 3：`dynamic_friction_console.py`。
+- 控制话题：`/dynamic_friction/set`，状态话题：`/dynamic_friction/state`，消息类型 `std_msgs/Float64MultiArray`，数据 `[mu, mu2]`。
+- 终端 2：`operator_console.py` 订阅 state，小车位于 `dynamic_pad` 时显示最新配置摩擦系数。
+- 注意：这是工程扩展，不改变项目书默认三地形固定摩擦结论；动态地块实验要单独解释和保存。
+
+## 2026-08-07 默认坡道关闭记忆
+
+- 用户认为默认世界里的阶梯坡道不必要。
+- 用户进一步要求彻底删除坡道，而不是只关闭。
+- 已删除 `world_generator.py` 中的坡道默认配置、`sdf_slope()` 和生成调用。
+- 已删除 `examples/terrain_multi.yaml`、`examples/terrain_obstacles.yaml` 中的 `slope` 配置块。
+- 已删除 `operator_console.py` 的 slope 识别逻辑和 `terrain_spawn.py` 的 slope 快捷入口。
+- `terrain_spawn.py` 当前可直接 spawn 到 `dynamic_pad`。
+- 修改后需要重新生成 `output/worlds/snowplow_multi_terrain.world` 并重启 Gazebo。

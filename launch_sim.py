@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -155,6 +156,22 @@ def start_controller(controller_name: str, timeout: float) -> None:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip())
 
 
+def gazebo_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    result = subprocess.run(
+        ["ros2", "pkg", "prefix", "snowplow_control"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        plugin_dir = str(Path(result.stdout.strip()) / "lib")
+        previous = env.get("GAZEBO_PLUGIN_PATH", "")
+        env["GAZEBO_PLUGIN_PATH"] = (
+            plugin_dir if not previous else f"{plugin_dir}{os.pathsep}{previous}"
+        )
+    return env
+
+
 def start_gazebo(world_path: Path, verbose: bool) -> subprocess.Popen:
     command = [
         "gazebo",
@@ -168,8 +185,13 @@ def start_gazebo(world_path: Path, verbose: bool) -> subprocess.Popen:
     command.append(str(world_path))
 
     if verbose:
-        return subprocess.Popen(command)
-    return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return subprocess.Popen(command, env=gazebo_environment())
+    return subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=gazebo_environment(),
+    )
 
 
 def start_robot_state_publisher(urdf_path: Path, verbose: bool) -> subprocess.Popen:

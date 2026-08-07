@@ -30,6 +30,7 @@ import yaml
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
 
 from world_generator import TERRAIN_PRESETS, default_zones, load_config
 
@@ -115,7 +116,7 @@ class TerrainLookup:
     def __init__(self, config_path: Path):
         self.config_path = config_path
         self.zones = []
-        self.slope = {}
+        self.dynamic_pad = {}
         self.error = ""
 
         try:
@@ -123,7 +124,18 @@ class TerrainLookup:
             self.zones = list(cfg.get("terrain_zones", []))
             if not self.zones:
                 self.zones = default_zones(float(cfg["ground_size"]))
-            self.slope = dict(cfg.get("slope", {}))
+            self.dynamic_pad = dict(cfg.get("dynamic_friction_pad", {}))
+            if self.dynamic_pad.get("enabled", False):
+                self.zones.append(
+                    {
+                        "type": "dynamic_pad",
+                        "x": self.dynamic_pad.get("x", 0.0),
+                        "y": self.dynamic_pad.get("y", -18.0),
+                        "width": self.dynamic_pad.get("width", 8.0),
+                        "depth": self.dynamic_pad.get("depth", 6.0),
+                        "thickness": self.dynamic_pad.get("thickness", 0.02),
+                    }
+                )
         except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
             self.error = str(exc)
 
@@ -136,25 +148,7 @@ class TerrainLookup:
             and abs(y - float(zone.get("y", 0.0))) <= half_depth
         )
 
-    def _slope_zone(self, x: float, y: float) -> Optional[dict]:
-        if not self.slope.get("enabled", False):
-            return None
-        if not self._contains(self.slope, x, y):
-            return None
-        return {
-            "type": "slope",
-            "terrain_type": self.slope.get("terrain_type", "asphalt"),
-            "x": self.slope.get("x", 0.0),
-            "y": self.slope.get("y", 0.0),
-            "width": self.slope.get("width", 0.0),
-            "depth": self.slope.get("depth", 0.0),
-        }
-
     def lookup(self, x: float, y: float) -> Tuple[str, Optional[dict]]:
-        slope_zone = self._slope_zone(x, y)
-        if slope_zone is not None:
-            return "slope", slope_zone
-
         # Later SDF models are placed on top of earlier overlapping models.
         # Reverse the list so the telemetry follows that visible/physical order.
         for zone in reversed(self.zones):
@@ -164,11 +158,12 @@ class TerrainLookup:
         return "outside", None
 
     def preset_for(self, terrain_name: str) -> dict:
-        if terrain_name == "slope":
-            return TERRAIN_PRESETS.get(
-                str(self.slope.get("terrain_type", "asphalt")),
-                TERRAIN_PRESETS["asphalt"],
-            )
+        if terrain_name == "dynamic_pad":
+            preset = dict(TERRAIN_PRESETS["dynamic_pad"])
+            for key in ("mu", "mu2", "kp", "kd", "min_depth", "max_vel"):
+                if key in self.dynamic_pad:
+                    preset[key] = self.dynamic_pad[key]
+            return preset
         return TERRAIN_PRESETS.get(terrain_name, {})
 
 
@@ -178,6 +173,7 @@ class OperatorConsole(Node):
         cmd_topic: str,
         odom_topic: str,
         terrain_lookup: TerrainLookup,
+        dynamic_state_topic: str,
         linear_speed: float,
         angular_speed: float,
         max_linear_speed: float,
@@ -189,6 +185,7 @@ class OperatorConsole(Node):
         super().__init__("snowplow_operator_console")
         self.cmd_topic = cmd_topic
         self.odom_topic = odom_topic
+        self.dynamic_state_topic = dynamic_state_topic
         self.terrain_lookup = terrain_lookup
         self.linear_speed = min(abs(linear_speed), max_linear_speed)
         self.angular_speed = min(abs(angular_speed), max_angular_speed)
@@ -201,6 +198,12 @@ class OperatorConsole(Node):
         self.publisher = self.create_publisher(Twist, cmd_topic, 10)
         self.subscription = self.create_subscription(
             Odometry, odom_topic, self._on_odom, 20
+        )
+        self.dynamic_state_subscription = self.create_subscription(
+            Float64MultiArray,
+            dynamic_state_topic,
+            self._on_dynamic_friction_state,
+            10,
         )
 
         self.last_input_at: Optional[float] = None
@@ -222,6 +225,8 @@ class OperatorConsole(Node):
         self.odom_vx = 0.0
         self.odom_vy = 0.0
         self.odom_wz = 0.0
+        self.dynamic_mu: Optional[float] = None
+        self.dynamic_mu2: Optional[float] = None
 
     def _on_odom(self, message: Odometry) -> None:
         pose = message.pose.pose.position
@@ -233,6 +238,11 @@ class OperatorConsole(Node):
         self.odom_vy = float(twist.linear.y)
         self.odom_wz = float(twist.angular.z)
         self.odom_received = True
+
+    def _on_dynamic_friction_state(self, message: Float64MultiArray) -> None:
+        if len(message.data) >= 2:
+            self.dynamic_mu = float(message.data[0])
+            self.dynamic_mu2 = float(message.data[1])
 
     def handle_key(self, key: str) -> None:
         if key in ("q", "Q"):
@@ -297,6 +307,14 @@ class OperatorConsole(Node):
     def _format_terrain(self) -> Tuple[str, dict]:
         terrain_name, _ = self.terrain_lookup.lookup(self.odom_x, self.odom_y)
         preset = self.terrain_lookup.preset_for(terrain_name)
+        if (
+            terrain_name == "dynamic_pad"
+            and self.dynamic_mu is not None
+            and self.dynamic_mu2 is not None
+        ):
+            preset = dict(preset)
+            preset["mu"] = self.dynamic_mu
+            preset["mu2"] = self.dynamic_mu2
         return terrain_name, preset
 
     def render(self, now: float, control_state: str) -> None:
@@ -346,6 +364,7 @@ class OperatorConsole(Node):
             f"max_vel={value('max_vel')}",
             "",
             f"TOPICS   : cmd={self.cmd_topic}  odom={self.odom_topic}",
+            f"DYNAMIC  : state={self.dynamic_state_topic}",
             f"LIMITS   : linear={self.max_linear_speed:.3f} m/s  "
             f"angular={self.max_angular_speed:.3f} rad/s",
         ]
@@ -373,6 +392,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--cmd-topic", default="/cmd_vel")
     parser.add_argument("--odom-topic", default="/odom")
+    parser.add_argument("--dynamic-state-topic", default="/dynamic_friction/state")
     parser.add_argument(
         "--terrain-config",
         default="examples/terrain_multi.yaml",
@@ -412,6 +432,7 @@ def main() -> None:
         cmd_topic=args.cmd_topic,
         odom_topic=args.odom_topic,
         terrain_lookup=terrain_lookup,
+        dynamic_state_topic=args.dynamic_state_topic,
         linear_speed=args.linear_speed,
         angular_speed=args.angular_speed,
         max_linear_speed=args.max_linear_speed,

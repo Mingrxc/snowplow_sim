@@ -18,7 +18,7 @@ TERRAIN_POSES = {
     "sand": (-10.0, 0.0),
     "concrete": (0.0, 0.0),
     "snow": (10.0, 0.0),
-    "slope": (0.0, 10.0),
+    "dynamic_pad": (0.0, -18.0),
 }
 
 

@@ -25,15 +25,6 @@ obstacles:
   - {type: tree,    x: 11, y: -9, z: 0, rpy: [0, 0, 0]}
   - {type: cone,    x: -2, y: 7, z: 0, rpy: [0, 0, 0]}
 
-slope:
-  enabled: true
-  x: 8
-  y: -8
-  width: 4.0
-  depth: 6.0
-  angle_deg: 10
-  terrain_type: snow
-
 visual_detail:
   enabled: true
   tiles: 5

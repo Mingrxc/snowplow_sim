@@ -14,6 +14,9 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GAZEBO REQUIRED gazebo)
 
 # ---- 库 ----
 add_library(${PROJECT_NAME} SHARED
@@ -36,6 +39,28 @@ ament_target_dependencies(${PROJECT_NAME}
   geometry_msgs
 )
 
+add_library(snowplow_dynamic_friction_plugin SHARED
+  src/dynamic_friction_plugin.cpp
+)
+
+target_include_directories(snowplow_dynamic_friction_plugin PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${GAZEBO_INCLUDE_DIRS}
+)
+
+target_compile_features(snowplow_dynamic_friction_plugin PUBLIC cxx_std_17)
+target_compile_options(snowplow_dynamic_friction_plugin PRIVATE ${GAZEBO_CFLAGS_OTHER})
+
+ament_target_dependencies(snowplow_dynamic_friction_plugin
+  rclcpp
+  std_msgs
+)
+
+target_link_libraries(snowplow_dynamic_friction_plugin
+  ${GAZEBO_LIBRARIES}
+)
+
 # 插件导出
 pluginlib_export_plugin_description_file(
   controller_interface snowplow_control_plugin.xml
@@ -44,6 +69,11 @@ pluginlib_export_plugin_description_file(
 # ---- 安装 ----
 install(DIRECTORY include/ DESTINATION include)
 install(TARGETS ${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+install(TARGETS snowplow_dynamic_friction_plugin
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin

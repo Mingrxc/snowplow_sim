@@ -16,14 +16,21 @@ ground_size: 30.0
 #   - {type: concrete, x: 0,   y: 0, width: 10, depth: 24, thickness: 0.015}
 #   - {type: snow,     x: 10,  y: 0, width: 10, depth: 24, thickness: 0.02}
 
-slope:
+dynamic_friction_pad:
   enabled: true
   x: 0
-  y: 10
-  width: 4.0
-  depth: 8.0
-  angle_deg: 10
-  terrain_type: concrete
+  y: -18
+  width: 8.0
+  depth: 6.0
+  thickness: 0.02
+  mu: 0.80
+  mu2: 0.50
+  kp: 1000000.0
+  kd: 5000.0
+  min_depth: 0.001
+  max_vel: 0.1
+  command_topic: /dynamic_friction/set
+  state_topic: /dynamic_friction/state
 
 visual_detail:
   enabled: true

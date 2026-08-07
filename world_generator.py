@@ -18,7 +18,6 @@ import sys
 import argparse
 import copy
 import yaml
-import numpy as np
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
 
@@ -98,6 +97,17 @@ TERRAIN_PRESETS = {
         "min_depth": 0.001,
         "max_vel": 0.1,
     },
+    "dynamic_pad": {
+        "name": "动态摩擦地块",
+        "description": "运行中由终端控制 mu/mu2 的扩展实验地块",
+        "color": (0.35, 0.42, 0.70, 1.0),
+        "mu": 0.80,
+        "mu2": 0.50,
+        "kp": 1_000_000.0,
+        "kd": 5000.0,
+        "min_depth": 0.001,
+        "max_vel": 0.1,
+    },
 }
 
 
@@ -170,14 +180,6 @@ DEFAULT_WORLD_CONFIG = {
         # 每个 obstacle: {type, x, y, z, rpy}
         # type 必须匹配 OBSTACLE_PRESETS 的 key
     ],
-    "slope": {
-        "enabled": False,
-        "x": 0, "y": 0,
-        "width": 5.0,
-        "depth": 10.0,
-        "angle_deg": 10.0,         # 坡度角（度）
-        "terrain_type": "concrete",
-    },
     "lighting": {
         "sun_pos": [10, 10, 30],
         "sun_diffuse": [0.8, 0.8, 0.8, 1.0],
@@ -186,6 +188,22 @@ DEFAULT_WORLD_CONFIG = {
         "enabled": True,       # 仅增强视觉，不改变地形 collision / 摩擦参数
         "tiles": 5,            # 每个地形区域的视觉纹理分块数
         "edge_band": 0.18,     # 地形边界视觉带宽 (m)
+    },
+    "dynamic_friction_pad": {
+        "enabled": False,
+        "x": 0.0,
+        "y": -18.0,
+        "width": 8.0,
+        "depth": 6.0,
+        "thickness": 0.02,
+        "mu": 0.80,
+        "mu2": 0.50,
+        "kp": 1_000_000.0,
+        "kd": 5000.0,
+        "min_depth": 0.001,
+        "max_vel": 0.1,
+        "command_topic": "/dynamic_friction/set",
+        "state_topic": "/dynamic_friction/state",
     },
 }
 
@@ -531,85 +549,86 @@ def sdf_terrain_zone(zone: dict, zone_index: int,
     return base
 
 
-def sdf_slope(cfg: dict) -> str:
-    """生成坡道模型 — 使用阶梯状堆叠 box 模拟真实爬坡面"""
-    slope = cfg.get("slope", {})
-    if not slope.get("enabled", False):
-        return "\n    <!-- 坡道: 已禁用 -->"
+def sdf_dynamic_friction_pad(cfg: dict) -> str:
+    pad = cfg.get("dynamic_friction_pad", {})
+    if not pad.get("enabled", False):
+        return "\n    <!-- 动态摩擦地块: 已禁用 -->"
 
-    x = slope.get("x", 0)
-    y = slope.get("y", 0)
-    width = slope.get("width", 5.0)
-    depth = slope.get("depth", 10.0)
-    angle_deg = slope.get("angle_deg", 10.0)
-    angle_rad = np.radians(angle_deg)
-    terrain_type = slope.get("terrain_type", "asphalt")
-    preset = TERRAIN_PRESETS.get(terrain_type, TERRAIN_PRESETS["asphalt"])
+    preset = TERRAIN_PRESETS["dynamic_pad"]
+    x = float(pad.get("x", 0.0))
+    y = float(pad.get("y", -18.0))
+    width = float(pad.get("width", 8.0))
+    depth = float(pad.get("depth", 6.0))
+    thickness = float(pad.get("thickness", 0.02))
+    z = thickness / 2.0
+    mu = float(pad.get("mu", preset["mu"]))
+    mu2 = float(pad.get("mu2", preset["mu2"]))
+    kp = float(pad.get("kp", preset["kp"]))
+    kd = float(pad.get("kd", preset["kd"]))
+    min_depth = float(pad.get("min_depth", preset["min_depth"]))
+    max_vel = float(pad.get("max_vel", preset["max_vel"]))
+    command_topic = pad.get("command_topic", "/dynamic_friction/set")
+    state_topic = pad.get("state_topic", "/dynamic_friction/state")
     r, g, b, a = preset["color"]
 
-    # 斜坡总高度
-    total_height = depth * np.sin(angle_rad)
-    # 阶梯数：每级高度约 0.05m，总数 >= 3
-    step_height = 0.05
-    num_steps = max(3, int(total_height / step_height))
-    actual_step_h = total_height / num_steps
-    step_depth = depth / num_steps
-    # 每级阶梯向前错开半个步长，形成斜面
-    step_offset_x = step_depth * np.cos(angle_rad) / 2
-
-    # 基础路面放在斜坡底端
-    base_thickness = 0.05
-
-    parts = []
-    # 斜坡底座
-    parts.append(f"""
-    <!-- ===== 坡道区 ({angle_deg}°, {num_steps}级阶梯) ===== -->
-    <model name="slope_{int(angle_deg)}deg_base">
+    return f"""
+    <!-- ===== 扩展实验区: 动态摩擦地块 ===== -->
+    <model name="dynamic_friction_pad">
       <static>true</static>
-      <pose>{x} {y} {base_thickness/2} 0 0 0</pose>
-      <link name="slope_base_link">
-        <collision name="slope_base_collision">
-          <geometry><box><size>{width} {depth+0.5} {base_thickness}</size></box></geometry>
+      <pose>{x} {y} {z} 0 0 0</pose>
+      <link name="dynamic_friction_link">
+        <collision name="dynamic_friction_collision">
+          <geometry>
+            <box><size>{width} {depth} {thickness}</size></box>
+          </geometry>
           <surface>
-            <friction><ode><mu>{preset["mu"]}</mu><mu2>{preset["mu2"]}</mu2></ode></friction>
-            <contact><ode><kp>{preset["kp"]}</kp><kd>{preset["kd"]}</kd><max_vel>{preset["max_vel"]}</max_vel><min_depth>{preset["min_depth"]}</min_depth></ode></contact>
+            <friction>
+              <ode>
+                <mu>{mu}</mu>
+                <mu2>{mu2}</mu2>
+              </ode>
+            </friction>
+            <contact>
+              <ode>
+                <kp>{kp}</kp>
+                <kd>{kd}</kd>
+                <max_vel>{max_vel}</max_vel>
+                <min_depth>{min_depth}</min_depth>
+              </ode>
+            </contact>
           </surface>
         </collision>
-        <visual name="slope_base_visual">
-          <geometry><box><size>{width} {depth+0.5} {base_thickness}</size></box></geometry>
-          <material><ambient>{r} {g} {b} {a}</ambient><diffuse>{r} {g} {b} {a}</diffuse></material>
+        <visual name="dynamic_friction_visual">
+          <geometry>
+            <box><size>{width} {depth} {thickness}</size></box>
+          </geometry>
+          <material>
+            <ambient>{r} {g} {b} {a}</ambient>
+            <diffuse>{r} {g} {b} {a}</diffuse>
+          </material>
+        </visual>
+        <visual name="dynamic_friction_center_mark">
+          <pose>0 0 {thickness / 2.0 + 0.004} 0 0 0</pose>
+          <geometry>
+            <box><size>{width * 0.80:.3f} 0.080 0.004</size></box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.20 1.0</ambient>
+            <diffuse>0.95 0.95 0.20 1.0</diffuse>
+          </material>
         </visual>
       </link>
+      <plugin name="dynamic_friction_plugin" filename="libsnowplow_dynamic_friction_plugin.so">
+        <link_name>dynamic_friction_link</link_name>
+        <collision_name>dynamic_friction_collision</collision_name>
+        <initial_mu>{mu}</initial_mu>
+        <initial_mu2>{mu2}</initial_mu2>
+        <command_topic>{command_topic}</command_topic>
+        <state_topic>{state_topic}</state_topic>
+        <publish_rate>2.0</publish_rate>
+      </plugin>
     </model>
-""")
-
-    # 阶梯 steps
-    for i in range(num_steps):
-        step_x = x - depth/2 + step_offset_x + i * step_depth
-        step_z = base_thickness/2 + (i + 0.5) * actual_step_h
-        # 每级阶梯稍向后缩，前端与斜面吻合
-        step_len = step_depth * 1.05  # 稍长一点保证连续
-        parts.append(f"""
-    <model name="slope_step_{int(angle_deg)}_{i}">
-      <static>true</static>
-      <pose>{step_x:.3f} {y} {step_z:.3f} 0 0 0</pose>
-      <link name="slope_step_{i}_link">
-        <collision name="slope_step_{i}_collision">
-          <geometry><box><size>{width} {step_len:.3f} {actual_step_h:.3f}</size></box></geometry>
-          <surface>
-            <friction><ode><mu>{preset["mu"]}</mu><mu2>{preset["mu2"]}</mu2></ode></friction>
-            <contact><ode><kp>{preset["kp"]}</kp><kd>{preset["kd"]}</kd><max_vel>{preset["max_vel"]}</max_vel><min_depth>{preset["min_depth"]}</min_depth></ode></contact>
-          </surface>
-        </collision>
-        <visual name="slope_step_{i}_visual">
-          <geometry><box><size>{width} {step_len:.3f} {actual_step_h:.3f}</size></box></geometry>
-          <material><ambient>{r} {g} {b} {a}</ambient><diffuse>{r} {g} {b} {a}</diffuse></material>
-        </visual>
-      </link>
-    </model>
-""")
-
-    return "".join(parts)
+"""
 
 
 def sdf_obstacle(obs: dict, obs_index: int) -> str:
@@ -734,7 +753,7 @@ def generate_world(cfg: dict, output_dir: str) -> str:
     for i, zone in enumerate(zones):
         parts.append(sdf_terrain_zone(zone, i, visual_cfg))
 
-    parts.append(sdf_slope(cfg))
+    parts.append(sdf_dynamic_friction_pad(cfg))
 
     obstacles = cfg.get("obstacles", [])
     for i, obs in enumerate(obstacles):
@@ -752,7 +771,8 @@ def generate_world(cfg: dict, output_dir: str) -> str:
         print(f"  - {TERRAIN_PRESETS.get(z['type'], {}).get('name', z['type'])} "
               f"({z['width']}x{z['depth']} m @ [{z['x']}, {z['y']}])")
     print(f"[world_generator] 障碍物数量: {len(obstacles)}")
-    print(f"[world_generator] 坡道: {'启用' if cfg.get('slope', {}).get('enabled') else '禁用'}")
+    dynamic_pad = cfg.get("dynamic_friction_pad", {})
+    print(f"[world_generator] 动态摩擦地块: {'启用' if dynamic_pad.get('enabled') else '禁用'}")
 
     return world_path
 

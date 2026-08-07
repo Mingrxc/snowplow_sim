@@ -371,3 +371,98 @@ python -B benchmark_runner.py --quick --output-dir results/smoke_benchmark
 - URDF/ros2_control 生成物改变，必须重新运行 `urdf_generator.py` 并重启 Gazebo。
 - 该修复改变 Gazebo 接触驱动力分布，正式 Gazebo 地形实验需要重新跑。
 - 不改变 `/cmd_vel`、`/odom` 话题语义，也不改变 `gazebo_speed_test.py` 指标定义。
+
+## 17. 真动态摩擦地块
+
+用户诉求：
+
+- 保留已有 `concrete/sand/snow` 地块。
+- 额外加入一块 `dynamic_pad`。
+- 新开终端输入 `mu mu2`，运行中直接更新同一块地的 Gazebo 摩擦系数。
+- 不采用“多块固定摩擦地块”方案。
+
+已处理：
+
+- `world_generator.py`
+  - 新增 `dynamic_friction_pad` 配置。
+  - 默认可生成 `dynamic_friction_pad` 模型和 `dynamic_friction_plugin` 插件标签。
+  - 保留项目书三地形默认布局。
+- `examples/terrain_multi.yaml`
+  - 启用 `dynamic_friction_pad`，默认位置 `x=0, y=-18`。
+  - 默认 `mu=0.80`, `mu2=0.50`。
+- `snowplow_control/src/dynamic_friction_plugin.cpp`
+  - 新增 Gazebo ModelPlugin。
+  - 订阅 `/dynamic_friction/set`，运行中调用 Gazebo SurfaceParams 的 `SetMuPrimary/SetMuSecondary`。
+  - 发布 `/dynamic_friction/state`。
+- `snowplow_control/CMakeLists.txt`, `snowplow_control/package.xml`
+  - 新增插件构建和 `std_msgs` 依赖。
+- `dynamic_friction_console.py`
+  - 新增终端 3 控制台，输入两个非负数更新 `mu/mu2`。
+- `operator_console.py`
+  - 订阅 `/dynamic_friction/state`。
+  - 小车位于 `dynamic_pad` 时，终端 2 的 `FRICTION` 显示最新动态配置值。
+- `launch_sim.py`
+  - 自动把 `snowplow_control` 安装目录下的 `lib` 加入 `GAZEBO_PLUGIN_PATH`，方便 Gazebo 加载动态摩擦插件。
+- `guidance/README.md`, `guidance/TERMINAL_DISPLAY_FIELDS.md`, `README.md`
+  - 同步终端 3 使用步骤和字段解释。
+
+影响判断：
+
+- 动态摩擦地块属于项目书未指定的工程扩展实验。
+- 不改变 `concrete/sand/snow` 三地形固定参数。
+- 会改变 `dynamic_pad` 上的 Gazebo 接触物理；相关实验结果必须单独保存和解释。
+- 需要重新编译 `snowplow_control`，重新生成 world 并重启 Gazebo。
+
+## 18. 默认世界移除阶梯坡道
+
+问题现象：
+
+- 默认 world 中启用了 `slope`，Gazebo 会显示一段阶梯状坡道。
+- 当前阶段用户不需要该阶梯，且它容易干扰三地形和动态摩擦地块展示。
+
+已处理：
+
+- `examples/terrain_multi.yaml`
+  - 将 `slope.enabled` 从 `true` 改为 `false`。
+- `README.md`
+  - 说明坡道功能保留，但默认世界不启用。
+
+影响判断：
+
+- 不删除 `world_generator.py` 的坡道生成功能。
+- 不改变 `concrete/sand/snow` 三地形参数。
+- 不改变 `dynamic_pad` 动态摩擦地块。
+- 需要重新生成 `output/worlds/snowplow_multi_terrain.world` 并重启 Gazebo。
+
+## 19. 坡道功能彻底移除
+
+用户追加要求：
+
+- 不只是关闭默认坡道，而是彻底删除这段不必要的阶梯坡道。
+
+已处理：
+
+- `world_generator.py`
+  - 删除 `DEFAULT_WORLD_CONFIG.slope`。
+  - 删除 `sdf_slope()`。
+  - 删除 `generate_world()` 中的坡道生成调用。
+  - 删除生成日志中的坡道状态输出。
+  - 删除不再需要的 `numpy` 依赖导入。
+- `examples/terrain_multi.yaml`
+  - 删除 `slope` 配置块。
+- `examples/terrain_obstacles.yaml`
+  - 删除 `slope` 配置块。
+- `operator_console.py`
+  - 删除 slope 区域识别逻辑。
+- `terrain_spawn.py`
+  - 删除 `slope` 快捷 spawn 坐标。
+  - 增加 `dynamic_pad` 快捷 spawn 坐标。
+- `README.md`
+  - 删除坡道功能表述。
+
+影响判断：
+
+- 活动代码路径不再生成阶梯坡道。
+- 默认世界仍保留 `concrete/sand/snow` 和 `dynamic_pad`。
+- 不改变控制器、机器人 URDF、动态摩擦插件或测速指标。
+- 需要重新生成 world 并重启 Gazebo。
