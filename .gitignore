@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# ROS 2 / colcon
+build/
+install/
+log/
+
+# Generated simulation artifacts
+output/
+results/
+figures/
+benchmark_output/
+terrain_output/
+
+# Runtime logs and bags
+*.log
+*.bag
+*.db3
+rosbag2_*/
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

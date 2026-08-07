@@ -1,0 +1,10 @@
+<library path="snowplow_control">
+  <class
+    name="snowplow_control/PMSMController"
+    type="snowplow_control::PMSMController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>
+      PMSM cascade controller for the tracked snowplow Gazebo ros2_control effort interface.
+    </description>
+  </class>
+</library>

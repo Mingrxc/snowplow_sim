@@ -1,0 +1,79 @@
+blade:
+  enabled: true
+  height: 0.35
+  mass: 15.0
+  pivot_offset_x: 0.5
+  pivot_offset_z: 0.2
+  thickness: 0.05
+  tilt_angle_max: 0.5
+  tilt_angle_min: -0.3
+  width: 1.0
+chassis:
+  height: 0.4
+  ixx: 8.0
+  iyy: 12.0
+  izz: 10.0
+  length: 1.2
+  mass: 80.0
+  width: 0.8
+control:
+  current_i: 10.0
+  current_p: 0.5
+  feedforward_b_hat: 1.25
+  feedforward_j_hat: 3.4
+  feedforward_tc: 0.25
+  update_rate: 1000
+  velocity_i: 1.5
+  velocity_p: 0.10
+drive:
+  efficiency: 0.85
+  gear_ratio: 50.0
+  max_torque: 30.0
+  max_velocity: 3.0
+  motor_inductance: 0.001
+  motor_resistance: 0.5
+  motor_rotor_inertia: 0.002
+  motor_torque_constant: 0.06
+robot_name: snowplow_robot
+sensors:
+  camera:
+    enabled: false
+    fov: 1.047
+    height: 720
+    update_rate: 30
+    width: 1280
+    x: 0.5
+    y: 0.0
+    z: 0.5
+  gps:
+    enabled: false
+    x: 0.0
+    y: 0.0
+    z: 0.6
+  imu:
+    accel_noise: 0.001
+    enabled: true
+    gyro_noise: 0.0001
+    update_rate: 100
+    x: 0.0
+    y: 0.0
+    z: 0.3
+  lidar:
+    enabled: true
+    max_range: 20.0
+    min_range: 0.1
+    resolution: 0.00436
+    scan_range: 6.28
+    update_rate: 10
+    x: 0.3
+    y: 0.0
+    z: 0.55
+tracks:
+  track_base: 0.9
+  track_mass: 5.0
+  track_radius: 0.15
+  track_separation: 0.65
+  track_width: 0.15
+  wheel_mass: 2.0
+visual_detail:
+  enabled: true

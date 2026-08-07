@@ -1,0 +1,33 @@
+# Default controller configuration for Gazebo ros2_control.
+
+controller_manager:
+  ros__parameters:
+    update_rate: 1000
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    pmsm_controller:
+      type: snowplow_control/PMSMController
+
+pmsm_controller:
+  ros__parameters:
+    joints:
+      - left_drive_wheel_joint
+      - right_drive_wheel_joint
+
+    wheel_radius: 0.15
+    track_separation: 0.65
+    wheel_torque_constant: 0.06
+    max_torque: 30.0
+
+    velocity_p: 0.10
+    velocity_i: 1.50
+    current_p: 0.50
+    current_i: 10.0
+
+    feedforward_j_hat: 3.4
+    feedforward_b_hat: 1.25
+    feedforward_tc: 0.25
+    feedforward_observer_gain: 50.0

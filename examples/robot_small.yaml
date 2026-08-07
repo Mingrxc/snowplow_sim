@@ -1,0 +1,38 @@
+# 小型扫雪车 — 变参示例
+# 只覆盖需要改的字段，其余沿用默认值
+
+robot_name: "snowplow_robot_small"
+
+chassis:
+  length: 0.8
+  width: 0.55
+  height: 0.3
+  mass: 45.0
+  ixx: 3.5
+  iyy: 5.0
+  izz: 4.5
+
+tracks:
+  track_width: 0.10
+  track_radius: 0.10
+  track_base: 0.60
+  track_separation: 0.45
+  wheel_mass: 1.2
+  track_mass: 3.0
+
+blade:
+  enabled: true
+  width: 0.7
+  height: 0.25
+  thickness: 0.03
+  mass: 8.0
+  pivot_offset_x: 0.35
+
+drive:
+  max_torque: 15.0
+  max_velocity: 3.5
+  gear_ratio: 40.0
+  efficiency: 0.82
+
+visual_detail:
+  enabled: true

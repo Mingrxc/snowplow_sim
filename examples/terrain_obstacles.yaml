@@ -1,0 +1,40 @@
+# 带障碍物的雪地场景
+# 用于测试机器人在积雪环境中的避障能力
+
+world_name: "snowplow_snow_obstacles"
+
+ground_size: 25.0
+
+# 全场景雪地，中间保留一小块沥青对照组
+terrain_zones:
+  - {type: snow,    x: 0, y: 0, width: 25, depth: 25, thickness: 0.02}
+  - {type: asphalt, x: 0, y: 0, width: 5, depth: 5, thickness: 0.015}
+
+# 散落障碍物
+obstacles:
+  # 雪地区域障碍物
+  - {type: cone,    x: 4, y: 3, z: 0, rpy: [0, 0, 0]}
+  - {type: cone,    x: 5, y: 3, z: 0, rpy: [0, 0, 0]}
+  - {type: barrier, x: -5, y: -4, z: 0, rpy: [0, 0, 0]}
+  - {type: barrier, x: -6, y: -4, z: 0, rpy: [0, 0, 0.3]}
+  - {type: wall,    x: -8, y: 8, z: 0, rpy: [0, 0, 0]}
+  - {type: wall,    x: -8, y: 6, z: 0, rpy: [0, 0, 0]}
+  - {type: box,     x: 2, y: -6, z: 0, rpy: [0, 0, 0.5]}
+  - {type: box,     x: 3, y: -5, z: 0, rpy: [0, 0, 0]}
+  - {type: tree,    x: 10, y: -9, z: 0, rpy: [0, 0, 0]}
+  - {type: tree,    x: 11, y: -9, z: 0, rpy: [0, 0, 0]}
+  - {type: cone,    x: -2, y: 7, z: 0, rpy: [0, 0, 0]}
+
+slope:
+  enabled: true
+  x: 8
+  y: -8
+  width: 4.0
+  depth: 6.0
+  angle_deg: 10
+  terrain_type: snow
+
+visual_detail:
+  enabled: true
+  tiles: 5
+  edge_band: 0.18
