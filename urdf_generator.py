@@ -33,6 +33,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "track_separation": 0.65,
         "wheel_mass": 2.0,
         "track_mass": 5.0,
+        "contact_mu1": 1.20,
+        "contact_mu2": 0.25,
+        "contact_slip1": 0.00,
+        "contact_slip2": 0.20,
+        "contact_kp": 1000000.0,
+        "contact_kd": 100.0,
+        "contact_min_depth": 0.001,
+        "contact_max_vel": 1.0,
     },
     "blade": {
         "enabled": True,
@@ -405,33 +413,38 @@ def gazebo_path(path: Path) -> str:
     return resolved
 
 
+def ros2_control_effort_joint(name: str, max_torque: float) -> str:
+    return f"""
+    <joint name="{name}">
+      <command_interface name="effort">
+        <param name="min">{-max_torque}</param>
+        <param name="max">{max_torque}</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>"""
+
+
 def xacro_ros2_control(cfg: dict[str, Any]) -> str:
     if not cfg.get("control", {}).get("enable_ros2_control", True):
         return ""
     max_torque = float(cfg["drive"].get("max_torque", 30.0))
+    joint_blocks = "\n".join(
+        ros2_control_effort_joint(joint, max_torque)
+        for joint in (
+            "left_drive_wheel_joint",
+            "right_drive_wheel_joint",
+            "left_idler_wheel_joint",
+            "right_idler_wheel_joint",
+        )
+    )
     return f"""
   <ros2_control name="SnowplowSystem" type="system">
     <hardware>
       <plugin>gazebo_ros2_control/GazeboSystem</plugin>
     </hardware>
-    <joint name="left_drive_wheel_joint">
-      <command_interface name="effort">
-        <param name="min">{-max_torque}</param>
-        <param name="max">{max_torque}</param>
-      </command_interface>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
-    <joint name="right_drive_wheel_joint">
-      <command_interface name="effort">
-        <param name="min">{-max_torque}</param>
-        <param name="max">{max_torque}</param>
-      </command_interface>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
+{joint_blocks}
   </ros2_control>
 """
 
@@ -542,15 +555,28 @@ def xacro_gazebo_plugins(cfg: dict[str, Any], control_yaml: Path) -> str:
   </gazebo>
 """)
 
+    tracks = cfg.get("tracks", {})
+    contact_mu1 = float(tracks.get("contact_mu1", 1.20))
+    contact_mu2 = float(tracks.get("contact_mu2", 0.25))
+    contact_slip1 = float(tracks.get("contact_slip1", 0.00))
+    contact_slip2 = float(tracks.get("contact_slip2", 0.20))
+    contact_kp = float(tracks.get("contact_kp", 1000000.0))
+    contact_kd = float(tracks.get("contact_kd", 100.0))
+    contact_min_depth = float(tracks.get("contact_min_depth", 0.001))
+    contact_max_vel = float(tracks.get("contact_max_vel", 1.0))
+
     for wheel in ("left_drive_wheel", "right_drive_wheel", "left_idler_wheel", "right_idler_wheel"):
         plugins.append(f"""
   <gazebo reference="{wheel}">
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
-    <kp>1000000.0</kp>
-    <kd>100.0</kd>
-    <minDepth>0.001</minDepth>
-    <maxVel>1.0</maxVel>
+    <mu1>{contact_mu1}</mu1>
+    <mu2>{contact_mu2}</mu2>
+    <fdir1>1 0 0</fdir1>
+    <slip1>{contact_slip1}</slip1>
+    <slip2>{contact_slip2}</slip2>
+    <kp>{contact_kp}</kp>
+    <kd>{contact_kd}</kd>
+    <minDepth>{contact_min_depth}</minDepth>
+    <maxVel>{contact_max_vel}</maxVel>
   </gazebo>
 """)
 
@@ -578,6 +604,8 @@ pmsm_controller:
     joints:
       - left_drive_wheel_joint
       - right_drive_wheel_joint
+      - left_idler_wheel_joint
+      - right_idler_wheel_joint
 
     wheel_radius: {tracks['track_radius']}
     track_separation: {tracks['track_separation']}

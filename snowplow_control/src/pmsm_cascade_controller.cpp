@@ -40,7 +40,13 @@ controller_interface::CallbackReturn PMSMController::on_init()
 {
   try {
     auto_declare<std::vector<std::string>>(
-      "joints", {"left_drive_wheel_joint", "right_drive_wheel_joint"});
+      "joints",
+      {
+        "left_drive_wheel_joint",
+        "right_drive_wheel_joint",
+        "left_idler_wheel_joint",
+        "right_idler_wheel_joint",
+      });
     auto_declare<double>("velocity_p", velocity_p_);
     auto_declare<double>("velocity_i", velocity_i_);
     auto_declare<double>("current_p", current_p_);
@@ -77,21 +83,33 @@ controller_interface::CallbackReturn PMSMController::on_configure(
       target_angular_velocity_.store(message->angular.z);
     });
 
+  std::string joint_list;
+  for (const auto & joint_name : joint_names_) {
+    if (!joint_list.empty()) {
+      joint_list += ", ";
+    }
+    joint_list += joint_name;
+  }
+
   RCLCPP_INFO(
     get_node()->get_logger(),
-    "Configured PMSMController for joints [%s, %s], r=%.3f m, B=%.3f m, max torque=%.2f Nm",
-    joint_names_[0].c_str(), joint_names_[1].c_str(),
-    wheel_radius_, track_separation_, max_torque_);
+    "Configured PMSMController for joints [%s], r=%.3f m, B=%.3f m, max torque=%.2f Nm",
+    joint_list.c_str(), wheel_radius_, track_separation_, max_torque_);
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
 controller_interface::CallbackReturn PMSMController::on_activate(
   const rclcpp_lifecycle::State &)
 {
-  if (command_interfaces_.size() != 2 || state_interfaces_.size() != 6) {
+  const auto expected_commands = joint_names_.size();
+  const auto expected_states = joint_names_.size() * 3;
+  if (command_interfaces_.size() != expected_commands ||
+    state_interfaces_.size() != expected_states)
+  {
     RCLCPP_ERROR(
       get_node()->get_logger(),
-      "Expected 2 command interfaces and 6 state interfaces, got %zu and %zu",
+      "Expected %zu command interfaces and %zu state interfaces, got %zu and %zu",
+      expected_commands, expected_states,
       command_interfaces_.size(), state_interfaces_.size());
     return controller_interface::CallbackReturn::ERROR;
   }
@@ -158,9 +176,16 @@ controller_interface::return_type PMSMController::update(
     omega_ref_left, omega_left, dt, left_);
   const double command_right = control_wheel(
     omega_ref_right, omega_right, dt, right_);
+  const double command_scale = joint_names_.size() == 4 ? 0.5 : 1.0;
+  const double front_left_command = command_left * command_scale;
+  const double front_right_command = command_right * command_scale;
 
-  command_interfaces_[0].set_value(command_left);
-  command_interfaces_[1].set_value(command_right);
+  command_interfaces_[0].set_value(front_left_command);
+  command_interfaces_[1].set_value(front_right_command);
+  if (joint_names_.size() == 4) {
+    command_interfaces_[2].set_value(front_left_command);
+    command_interfaces_[3].set_value(front_right_command);
+  }
   left_.previous_effort = command_left;
   right_.previous_effort = command_right;
 
@@ -188,10 +213,10 @@ void PMSMController::load_parameters()
 
 bool PMSMController::validate_parameters() const
 {
-  if (joint_names_.size() != 2) {
+  if (joint_names_.size() != 2 && joint_names_.size() != 4) {
     RCLCPP_ERROR(
       get_node()->get_logger(),
-      "Parameter 'joints' must contain exactly two drive joints");
+      "Parameter 'joints' must contain two drive joints or four track proxy joints");
     return false;
   }
   if (wheel_radius_ <= kSmall || track_separation_ <= kSmall ||

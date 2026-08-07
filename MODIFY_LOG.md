@@ -191,8 +191,9 @@ python -B benchmark_runner.py --quick --output-dir results/smoke_benchmark
 
 - `operator_console.py` 启动后能看到 `/odom` 从 `WAITING` 变成 `OK`。
 - 按住 `i/w` 前进，松手约 0.3 秒内停车。
-- 按住 `j/a/左键` 原地左转，不应突然高速前进。
-- 按住 `l/d/右键` 原地右转，不应突然高速前进。
+- 按住 `a/左键` 平滑左转，轨迹应更像前进弧线。
+- 按住 `d/右键` 平滑右转，轨迹应更像前进弧线。
+- 按住 `j` 原地左转，按住 `l` 原地右转。
 - 空格能立即发布零速度。
 - 当前地形显示能随 `terrain_spawn.py concrete/sand/snow/slope` 改变。
 
@@ -227,3 +228,146 @@ python -B benchmark_runner.py --quick --output-dir results/smoke_benchmark
 - 不改变地形参数、世界布局、测速指标或 `/cmd_vel` 话题语义。
 - Gazebo 中的 C++ 控制器需要重新 `colcon build --packages-select snowplow_control`。
 - `output/urdf/ros2_control.yaml` 需要重新由 `urdf_generator.py` 生成。
+
+## 12. 手动遥控速度与转向手感优化
+
+问题现象：
+
+- 直走、倒退速度偏慢。
+- 只按 `a` 左转时不够顺畅。
+
+已处理：
+
+- `operator_console.py`
+  - 默认 `linear_speed` 从 `0.20 m/s` 提高到 `0.35 m/s`。
+  - 默认 `max_linear_speed` 从 `0.30 m/s` 提高到 `0.60 m/s`。
+  - 默认 `angular_speed` 从 `0.50 rad/s` 提高到 `1.00 rad/s`。
+  - 默认 `max_angular_speed` 从 `1.00 rad/s` 提高到 `1.80 rad/s`。
+  - `a/d` 改为带一点前进速度的平滑弧线转向。
+  - `j/l` 保留为原地左/右旋转。
+- `guidance/README.md`
+  - 更新按键说明和临时调参命令。
+- `README.md`
+  - 更新 `operator_console.py` 模块说明。
+
+影响判断：
+
+- 只影响手动遥控体验。
+- 不改变 `gazebo_speed_test.py` 的正式固定速度实验。
+- 不改变地形参数、结果目录或项目书三地形口径。
+
+## 13. 手动遥控二次提速与弧线转向修正
+
+问题现象：
+
+- `w/s` 速度仍偏慢。
+- `a/d` 虽然发布了速度，但线速度分量过小，换算到左右履带后接近一侧反转、一侧正转，Gazebo 中仍像原地硬转，容易卡住。
+
+已处理：
+
+- `operator_console.py`
+  - 默认 `linear_speed` 从 `0.35 m/s` 提高到 `0.50 m/s`。
+  - 默认 `max_linear_speed` 从 `0.60 m/s` 提高到 `0.80 m/s`。
+  - 默认 `angular_speed` 从 `1.00 rad/s` 提高到 `1.10 rad/s`。
+  - 默认 `max_angular_speed` 从 `1.80 rad/s` 提高到 `2.00 rad/s`。
+  - `a/d` 弧线转向改为 `0.85 * linear_speed` 和 `0.75 * angular_speed`，使左右履带都保持向前。
+- `guidance/README.md`
+  - 更新默认遥控参数和激进调试命令。
+- `README.md`
+  - 更新默认遥控手感说明。
+
+影响判断：
+
+- 只影响手动操作台默认 `/cmd_vel` 输出。
+- 不影响正式固定速度地形测试。
+
+## 14. `a/d` 强弧线转向修正
+
+问题现象：
+
+- `w/s` 直行体验已经良好。
+- `a/d` 按住 5 秒约只改变 10 度左右，不能有效换方向。
+
+已处理：
+
+- `operator_console.py`
+  - `a/d` 从温和弧线转向改为强弧线转向。
+  - 默认 `a/d` 输出约为 `vx=0.275 m/s`, `wz=±2.200 rad/s`。
+  - 保持 `w/s` 默认直行速度不变。
+- `guidance/README.md`
+  - 更新 `a/d` 预期输出和调试说明。
+- `README.md`
+  - 更新 `operator_console.py` 键位语义。
+
+影响判断：
+
+- 只影响手动遥控换方向能力。
+- 不影响 `gazebo_speed_test.py` 正式地形测速。
+- 如果仍然转向不足，下一层需要审查履带横向摩擦或控制器转向扭矩增益。
+
+## 15. 履带横向滑移与原地转向修复
+
+问题现象：
+
+- `w/s` 直走、倒退速度已经可接受。
+- 按住 `a/d` 时 `/cmd_vel` 已有角速度输出，但车头几乎不转，约 5 秒只变化十度左右。
+
+根因判断：
+
+- 这不再是键盘输入链路问题。
+- 履带车转向依赖左右履带差速和地面横向滑移；当前模型用圆柱轮近似履带，如果轮/地接触使用 `mu1=1.0, mu2=1.0` 的各向同性高摩擦，Gazebo 会把横向擦地转向“锁住”。
+- 项目书未指定履带接触求解的具体 `mu1/mu2/slip` 数值，因此本轮属于 Gazebo 工程近似修复，不写成项目书方法。
+
+已处理：
+
+- `urdf_generator.py`
+  - 在 `tracks` 配置中新增履带轮接触参数：`contact_mu1`, `contact_mu2`, `contact_slip1`, `contact_slip2`, `contact_kp`, `contact_kd`, `contact_min_depth`, `contact_max_vel`。
+  - 生成 Xacro 时默认写入 `mu1=1.2`, `mu2=0.25`, `slip2=0.2`，让纵向保持抓地、横向允许擦滑。
+- `examples/robot_default.yaml`
+  - 写出上述默认接触参数，便于后续手动调参。
+- `operator_console.py`
+  - `a/d` 从强弧线转向改成原地转向，默认输出约 `vx=0.000 m/s`, `wz=±2.080 rad/s`。
+  - 默认 `angular_speed` 调整为 `1.30 rad/s`，`max_angular_speed` 调整为 `2.60 rad/s`。
+- `README.md`
+  - 说明履带转向依赖接触滑移，`contact_mu2/contact_slip2` 属于工程近似参数。
+- `guidance/README.md`
+  - 新增 `w/s` 能走但 `a/d` 几乎不转的排查与调参步骤。
+
+影响判断：
+
+- 会改变 Gazebo 中机器人与地面接触行为，因此需要重新生成 `output/urdf/snowplow_robot.urdf.xacro` 并重启 Gazebo。
+- 不改变 `/cmd_vel`、`/odom` 话题语义。
+- 不改变 `gazebo_speed_test.py` 的指标定义、结果目录或三地形口径。
+- 正式地形实验结果需要在本改动后重新跑，不能和旧接触参数下的结果混写。
+
+## 16. 四轮履带代理 effort 修复
+
+问题现象：
+
+- `a/d` 已经可以转向，但视觉上更像以前部驱动轮为转轴，而不是绕车体中部附近偏航。
+
+根因判断：
+
+- 当前简化模型只有 `left_drive_wheel_joint` 和 `right_drive_wheel_joint` 接收 effort。
+- 后部 `idler` 轮虽然接触地面，但不主动代表同侧履带运动，导致驱动力集中在前部接触轮。
+- 项目书未指定真实履带链节/接触求解方式，因此本轮仍属于 Gazebo 工程近似修复。
+
+已处理：
+
+- `urdf_generator.py`
+  - `<ros2_control>` 默认纳入 `left_idler_wheel_joint` 和 `right_idler_wheel_joint`。
+  - 生成的 `ros2_control.yaml` 默认包含四个履带代理轮关节。
+- `snowplow_control/src/pmsm_cascade_controller.cpp`
+  - 控制器兼容 2 轮旧配置和 4 轮履带代理配置。
+  - 四轮代理配置下，每侧计算出的总 effort 平均分给前后两个接触轮，避免总扭矩翻倍。
+- `snowplow_control/config/snowplow_control.yaml`
+  - 同步四轮默认关节列表。
+- `README.md`, `guidance/README.md`, `CODEX_MEMORY.md`
+  - 同步说明四轮履带代理边界和重新编译/重新生成要求。
+
+影响判断：
+
+- C++ 控制器接口数量改变，必须重新 `colcon build --packages-select snowplow_control`。
+- URDF/ros2_control 生成物改变，必须重新运行 `urdf_generator.py` 并重启 Gazebo。
+- 该修复改变 Gazebo 接触驱动力分布，正式 Gazebo 地形实验需要重新跑。
+- 不改变 `/cmd_vel`、`/odom` 话题语义，也不改变 `gazebo_speed_test.py` 指标定义。

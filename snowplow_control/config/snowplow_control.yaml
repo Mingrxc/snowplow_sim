@@ -16,6 +16,8 @@ pmsm_controller:
     joints:
       - left_drive_wheel_joint
       - right_drive_wheel_joint
+      - left_idler_wheel_joint
+      - right_idler_wheel_joint
 
     wheel_radius: 0.15
     track_separation: 0.65

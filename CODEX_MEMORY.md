@@ -91,3 +91,25 @@ cd ~/ros2_ws
 colcon build --packages-select snowplow_control
 source install/setup.bash
 ```
+
+## 2026-08-07 履带转向问题记忆
+
+- 现象：`w/s` 直走和倒退已经可用，但 `a/d` 几乎不转。
+- 判断：键盘和 `/cmd_vel` 链路已基本排除；优先检查 Gazebo 履带轮接触模型。
+- 原因：简化模型用圆柱轮近似履带。真实履带车需要横向擦滑才能差速转向；如果 `mu1/mu2` 都很高且接近，Gazebo 会让车像被地面锁住。
+- 本轮修复：
+  - `urdf_generator.py` 新增 `tracks.contact_*` 接触参数；
+  - `examples/robot_default.yaml` 默认 `contact_mu1=1.2`, `contact_mu2=0.25`, `contact_slip2=0.2`；
+  - `operator_console.py` 将 `a/d` 改成原地转向，默认 `wz≈±2.08 rad/s`；
+  - `guidance/README.md` 写入重新生成 URDF、重启 Gazebo和调参步骤。
+- 注意：接触参数只在重新生成 Xacro 并重新 spawn 机器人后生效。正式 Gazebo 地形实验需要基于同一套接触参数重新跑，不能和旧结果混合。
+
+## 2026-08-07 四轮履带代理记忆
+
+- 现象：`a/d` 成功转向后，视觉上像以前部为转轴。
+- 判断：简化模型只有前部 `drive_wheel` 接收 effort，后部 `idler` 被动拖拽，驱动力分布偏前。
+- 本轮修复：
+  - `urdf_generator.py` 和 `snowplow_control/config/snowplow_control.yaml` 默认把四个轮关节都纳入控制器；
+  - `pmsm_cascade_controller.cpp` 兼容 2/4 关节；
+  - 四轮配置下每侧 effort 平均分给前后两个接触轮，避免动力翻倍。
+- 注意：这改变 C++ 控制器接口，必须重新 `colcon build --packages-select snowplow_control`，再重新生成 URDF 并重启 Gazebo。

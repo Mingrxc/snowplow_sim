@@ -36,6 +36,7 @@ from world_generator import TERRAIN_PRESETS, default_zones, load_config
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
+# (display name, linear multiplier, angular multiplier)
 KeyCommand = Tuple[str, float, float]
 
 KEY_COMMANDS: Dict[str, KeyCommand] = {
@@ -43,14 +44,14 @@ KEY_COMMANDS: Dict[str, KeyCommand] = {
     "w": ("FORWARD", 1.0, 0.0),
     "k": ("BACKWARD", -1.0, 0.0),
     "s": ("BACKWARD", -1.0, 0.0),
-    "j": ("TURN_LEFT", 0.0, 1.0),
-    "a": ("TURN_LEFT", 0.0, 1.0),
-    "l": ("TURN_RIGHT", 0.0, -1.0),
-    "d": ("TURN_RIGHT", 0.0, -1.0),
+    "a": ("SPIN_LEFT", 0.0, 1.6),
+    "d": ("SPIN_RIGHT", 0.0, -1.6),
+    "j": ("SPIN_LEFT", 0.0, 1.0),
+    "l": ("SPIN_RIGHT", 0.0, -1.0),
     "\x1b[A": ("FORWARD", 1.0, 0.0),
     "\x1b[B": ("BACKWARD", -1.0, 0.0),
-    "\x1b[D": ("TURN_LEFT", 0.0, 1.0),
-    "\x1b[C": ("TURN_RIGHT", 0.0, -1.0),
+    "\x1b[D": ("SPIN_LEFT", 0.0, 1.6),
+    "\x1b[C": ("SPIN_RIGHT", 0.0, -1.6),
 }
 
 
@@ -319,7 +320,8 @@ class OperatorConsole(Node):
             "=========================",
             "Press or hold a direction key to move; Space stops immediately.",
             "i/w or Up: forward    k/s or Down: backward",
-            "j/a or Left: turn left    l/d or Right: turn right",
+            "a/d or Left/Right: in-place spin for heading change",
+            "j/l: slower in-place spin left/right",
             "Space: stop immediately    q or Ctrl+C: quit and stop",
             "",
             f"CONTROL  : {control_state:<8} command={self.command_name:<10} "
@@ -376,10 +378,10 @@ def parse_args() -> argparse.Namespace:
         default="examples/terrain_multi.yaml",
         help="World YAML used to resolve the configured terrain under the robot.",
     )
-    parser.add_argument("--linear-speed", type=float, default=0.20)
-    parser.add_argument("--angular-speed", type=float, default=0.50)
-    parser.add_argument("--max-linear-speed", type=float, default=0.30)
-    parser.add_argument("--max-angular-speed", type=float, default=1.00)
+    parser.add_argument("--linear-speed", type=float, default=0.50)
+    parser.add_argument("--angular-speed", type=float, default=1.30)
+    parser.add_argument("--max-linear-speed", type=float, default=0.80)
+    parser.add_argument("--max-angular-speed", type=float, default=2.60)
     parser.add_argument(
         "--input-timeout",
         type=float,

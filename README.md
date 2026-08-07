@@ -19,7 +19,7 @@ ros2_control + effort interface
 也就是说：
 
 - Gazebo 负责物理环境、传感器和真值里程计；
-- `snowplow_control` 负责左右驱动轮 effort 控制；
+- `snowplow_control` 负责左右履带代理轮 effort 控制；
 - 不再把 `libgazebo_ros_diff_drive.so` 作为主控路线；
 - 默认世界对齐项目书三地形：水泥/硬化路面、沙土/泥沙路面、冰雪路面；
 - 生成物和实验结果不作为源码提交。
@@ -69,7 +69,8 @@ snowplow_sim/
 - 生成车体、履带、扫雪铲和传感器连杆；
 - 生成 `<ros2_control>` 硬件接口；
 - 加载 `gazebo_ros2_control/GazeboSystem`；
-- 配置左右驱动轮 effort command interface；
+- 配置左右前后履带代理轮 effort command interface；
+- 配置履带轮 Gazebo 接触参数，默认采用纵向抓地、横向可滑的近似模型；
 - 保留 `/odom` 真值里程计插件。
 
 ### `world_generator.py`
@@ -119,12 +120,15 @@ snowplow_control/PMSMController
 
 - command interface: `left_drive_wheel_joint/effort`
 - command interface: `right_drive_wheel_joint/effort`
+- command interface: `left_idler_wheel_joint/effort`
+- command interface: `right_idler_wheel_joint/effort`
 - state interface: position / velocity / effort
 
 Gazebo 适配口径：
 
 - `/cmd_vel` 转为左右轮角速度目标；
-- 速度 PI 和前馈项直接输出 Gazebo wheel effort；
+- 速度 PI 和前馈项计算每侧履带代理总 effort；
+- 默认四轮代理配置下，每侧 effort 平均分配给前后两个接触轮，避免只有前部驱动轮“拧车”；
 - `current_p/current_i` 保留为 PMSM 原型参数，不在 Gazebo effort 适配层反推电流反馈。
 
 输入话题：
@@ -139,10 +143,19 @@ Gazebo 适配口径：
 
 关键职责：
 
-- 按住移动、松手停车；
+- 按键刷新运动命令，超时自动停车；
 - 发布 `/cmd_vel`；
 - 订阅 `/odom`；
 - 显示当前速度、位姿、地形信息和实际发布速度。
+
+默认遥控手感：
+
+- `w/i` 前进，`s/k` 后退；
+- `a/d` 为原地左/右转向，用于快速换方向；
+- `j/l` 保留为原地左/右旋转备用键；
+- 默认线速度 `0.50 m/s`，默认角速度 `1.30 rad/s`。
+
+注意：当前模型用圆柱轮、四轮履带代理 effort 和接触参数近似履带。真实履带车通过左右履带差速和地面横向滑移转向，因此 `examples/robot_default.yaml` 中的 `tracks.contact_mu2` 和 `tracks.contact_slip2` 会明显影响 `a/d` 转向手感。该参数属于 Gazebo 工程近似，项目书未指定具体数值。
 
 ### `terrain_spawn.py`
 
