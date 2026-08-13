@@ -174,6 +174,7 @@ class OperatorConsole(Node):
         odom_topic: str,
         terrain_lookup: TerrainLookup,
         dynamic_state_topic: str,
+        dynamic_drive_topic: str,
         linear_speed: float,
         angular_speed: float,
         max_linear_speed: float,
@@ -186,6 +187,7 @@ class OperatorConsole(Node):
         self.cmd_topic = cmd_topic
         self.odom_topic = odom_topic
         self.dynamic_state_topic = dynamic_state_topic
+        self.dynamic_drive_topic = dynamic_drive_topic
         self.terrain_lookup = terrain_lookup
         self.linear_speed = min(abs(linear_speed), max_linear_speed)
         self.angular_speed = min(abs(angular_speed), max_angular_speed)
@@ -203,6 +205,12 @@ class OperatorConsole(Node):
             Float64MultiArray,
             dynamic_state_topic,
             self._on_dynamic_friction_state,
+            10,
+        )
+        self.dynamic_drive_subscription = self.create_subscription(
+            Float64MultiArray,
+            dynamic_drive_topic,
+            self._on_dynamic_drive_command,
             10,
         )
 
@@ -227,6 +235,8 @@ class OperatorConsole(Node):
         self.odom_wz = 0.0
         self.dynamic_mu: Optional[float] = None
         self.dynamic_mu2: Optional[float] = None
+        self.drive_override_seen = False
+        self.drive_override_note = "args"
 
     def _on_odom(self, message: Odometry) -> None:
         pose = message.pose.pose.position
@@ -243,6 +253,24 @@ class OperatorConsole(Node):
         if len(message.data) >= 2:
             self.dynamic_mu = float(message.data[0])
             self.dynamic_mu2 = float(message.data[1])
+
+    def _on_dynamic_drive_command(self, message: Float64MultiArray) -> None:
+        values = [float(item) for item in message.data]
+        if not values:
+            return
+        linear = values[0]
+        angular = values[1] if len(values) >= 2 else self.angular_speed
+        if (
+            not math.isfinite(linear)
+            or not math.isfinite(angular)
+            or linear < 0.0
+            or angular < 0.0
+        ):
+            return
+        self.linear_speed = min(linear, self.max_linear_speed)
+        self.angular_speed = min(angular, self.max_angular_speed)
+        self.drive_override_seen = True
+        self.drive_override_note = "dynamic"
 
     def handle_key(self, key: str) -> None:
         if key in ("q", "Q"):
@@ -365,6 +393,10 @@ class OperatorConsole(Node):
             "",
             f"TOPICS   : cmd={self.cmd_topic}  odom={self.odom_topic}",
             f"DYNAMIC  : state={self.dynamic_state_topic}",
+            f"DRIVE    : source={self.drive_override_note:<7} "
+            f"linear_step={self.linear_speed:.3f} m/s  "
+            f"angular_step={self.angular_speed:.3f} rad/s",
+            f"DRIVE TOPIC: {self.dynamic_drive_topic}",
             f"LIMITS   : linear={self.max_linear_speed:.3f} m/s  "
             f"angular={self.max_angular_speed:.3f} rad/s",
         ]
@@ -393,6 +425,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cmd-topic", default="/cmd_vel")
     parser.add_argument("--odom-topic", default="/odom")
     parser.add_argument("--dynamic-state-topic", default="/dynamic_friction/state")
+    parser.add_argument("--dynamic-drive-topic", default="/dynamic_drive/set")
     parser.add_argument(
         "--terrain-config",
         default="examples/terrain_multi.yaml",
@@ -400,8 +433,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--linear-speed", type=float, default=0.50)
     parser.add_argument("--angular-speed", type=float, default=1.30)
-    parser.add_argument("--max-linear-speed", type=float, default=0.80)
-    parser.add_argument("--max-angular-speed", type=float, default=2.60)
+    parser.add_argument("--max-linear-speed", type=float, default=1.20)
+    parser.add_argument("--max-angular-speed", type=float, default=3.20)
     parser.add_argument(
         "--input-timeout",
         type=float,
@@ -433,6 +466,7 @@ def main() -> None:
         odom_topic=args.odom_topic,
         terrain_lookup=terrain_lookup,
         dynamic_state_topic=args.dynamic_state_topic,
+        dynamic_drive_topic=args.dynamic_drive_topic,
         linear_speed=args.linear_speed,
         angular_speed=args.angular_speed,
         max_linear_speed=args.max_linear_speed,

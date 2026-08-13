@@ -1,3 +1,23 @@
+// Copyright 2026 Mingrxc
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
 #ifndef SNOWPLOW_CONTROL__PMSM_CASCADE_CONTROLLER_HPP_
 #define SNOWPLOW_CONTROL__PMSM_CASCADE_CONTROLLER_HPP_
 
@@ -37,10 +57,7 @@ private:
   struct WheelMemory
   {
     double speed_integral = 0.0;
-    double load_torque_hat = 0.0;
-    double previous_omega = 0.0;
     double previous_omega_ref = 0.0;
-    double previous_effort = 0.0;
   };
 
   void load_parameters();
@@ -65,10 +82,7 @@ private:
 
   double compute_feedforward(
     double d_omega_ref_dt,
-    double omega,
-    double electrical_torque,
-    double dt,
-    WheelMemory & memory);
+    double omega_ref);
 
   double clamp(double value, double lower, double upper) const;
 

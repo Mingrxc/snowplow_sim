@@ -44,10 +44,10 @@ TERRAIN_PRESETS = {
     },
     "snow": {
         "name": "冰雪路面",
-        "description": "冰雪/积雪低附着路面，核心测试场景",
+        "description": "冰雪/积雪低附着路面，保留低附着同时保证履带可差速转向",
         "color": (0.95, 0.95, 0.95, 1.0),   # white
         "mu": 0.30,
-        "mu2": 0.60,
+        "mu2": 0.16,
         "kp": 80_000.0,
         "kd": 1000.0,
         "min_depth": 0.003,
@@ -57,8 +57,8 @@ TERRAIN_PRESETS = {
         "name": "沙地区",
         "description": "颗粒松软路面，行驶阻力大",
         "color": (0.85, 0.75, 0.55, 1.0),   # tan/sand
-        "mu": 0.50,
-        "mu2": 1.00,
+        "mu": 0.38,
+        "mu2": 0.32,
         "kp": 120_000.0,
         "kd": 1500.0,
         "min_depth": 0.003,
@@ -90,8 +90,8 @@ TERRAIN_PRESETS = {
         "name": "水泥路面",
         "description": "标准硬质路面",
         "color": (0.55, 0.55, 0.55, 1.0),
-        "mu": 0.70,
-        "mu2": 1.40,
+        "mu": 1.20,
+        "mu2": 0.70,
         "kp": 1_000_000.0,
         "kd": 5000.0,
         "min_depth": 0.001,
@@ -102,7 +102,7 @@ TERRAIN_PRESETS = {
         "description": "运行中由终端控制 mu/mu2 的扩展实验地块",
         "color": (0.35, 0.42, 0.70, 1.0),
         "mu": 0.80,
-        "mu2": 0.50,
+        "mu2": 0.45,
         "kp": 1_000_000.0,
         "kd": 5000.0,
         "min_depth": 0.001,
@@ -120,36 +120,46 @@ OBSTACLE_PRESETS = {
         "name": "交通锥",
         "mesh": None,  # 用 cylinder 近似
         "geometry": '<cylinder><radius>0.15</radius><length>0.5</length></cylinder>',
+        "footprint": ("circle", 0.15, 0.15),
         "mass": 2.0,
         "color": (1.0, 0.4, 0.0, 1.0),
+        "ground_z": 0.25,
     },
     "barrier": {
         "name": "路障",
         "mesh": None,
         "geometry": '<box><size>1.5 0.3 0.6</size></box>',
+        "footprint": ("box", 1.50, 0.30),
         "mass": 15.0,
         "color": (0.9, 0.9, 0.0, 1.0),
+        "ground_z": 0.30,
     },
     "wall": {
         "name": "墙体",
         "mesh": None,
         "geometry": '<box><size>2.0 0.2 1.0</size></box>',
+        "footprint": ("box", 2.00, 0.20),
         "mass": 200.0,
         "color": (0.5, 0.4, 0.35, 1.0),
+        "ground_z": 0.50,
     },
     "box": {
         "name": "纸箱",
         "mesh": None,
         "geometry": '<box><size>0.4 0.4 0.4</size></box>',
+        "footprint": ("box", 0.40, 0.40),
         "mass": 3.0,
         "color": (0.7, 0.5, 0.3, 1.0),
+        "ground_z": 0.20,
     },
     "tree": {
         "name": "树木",
         "mesh": None,
         "geometry": '<cylinder><radius>0.1</radius><length>2.0</length></cylinder>',
+        "footprint": ("circle", 0.10, 0.10),
         "mass": 50.0,
         "color": (0.3, 0.2, 0.1, 1.0),
+        "ground_z": 1.00,
     },
 }
 
@@ -197,7 +207,7 @@ DEFAULT_WORLD_CONFIG = {
         "depth": 6.0,
         "thickness": 0.02,
         "mu": 0.80,
-        "mu2": 0.50,
+        "mu2": 0.45,
         "kp": 1_000_000.0,
         "kd": 5000.0,
         "min_depth": 0.001,
@@ -638,7 +648,7 @@ def sdf_obstacle(obs: dict, obs_index: int) -> str:
 
     x = obs.get("x", 0)
     y = obs.get("y", 0)
-    z = obs.get("z", 0)
+    z = float(obs.get("z", 0.0)) + float(preset.get("ground_z", 0.0))
     r, p, yaw = obs.get("rpy", [0, 0, 0])
     r_, g_, b_, a_ = preset["color"]
 
@@ -786,7 +796,7 @@ def main():
 内置地形类型:
   concrete 水泥/硬化路面 (μ=0.70) [项目书默认]
   sand     沙土/泥沙路面 (μ=0.50) [项目书默认]
-  snow     冰雪/积雪路面 (μ=0.30) [项目书默认]
+  snow     冰雪/积雪路面 (mu=0.30, mu2=0.16) [项目书默认]
   asphalt  标准沥青路面 (μ=0.75) [扩展对照]
   ice      冰面区 (μ=0.08) [扩展对照]
   grass    草地 (μ=0.60) [扩展对照]

@@ -1,3 +1,23 @@
+// Copyright 2026 Mingrxc
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
 #include "snowplow_control/pmsm_cascade_controller.hpp"
 
 #include <algorithm>
@@ -19,18 +39,18 @@ constexpr double kSmall = 1.0e-9;
 }
 
 PMSMController::PMSMController()
-: velocity_p_(0.10),
-  velocity_i_(1.50),
+: velocity_p_(8.00),
+  velocity_i_(4.00),
   current_p_(0.50),
   current_i_(10.0),
   feedforward_j_hat_(3.4),
-  feedforward_b_hat_(1.25),
-  feedforward_tc_(0.25),
+  feedforward_b_hat_(0.45),
+  feedforward_tc_(0.80),
   feedforward_observer_gain_(50.0),
   wheel_radius_(0.15),
   track_separation_(0.65),
   wheel_torque_constant_(0.06),
-  max_torque_(30.0),
+  max_torque_(45.0),
   target_linear_velocity_(0.0),
   target_angular_velocity_(0.0)
 {
@@ -186,8 +206,6 @@ controller_interface::return_type PMSMController::update(
     command_interfaces_[2].set_value(front_left_command);
     command_interfaces_[3].set_value(front_right_command);
   }
-  left_.previous_effort = command_left;
-  right_.previous_effort = command_right;
 
   return controller_interface::return_type::OK;
 }
@@ -253,9 +271,14 @@ double PMSMController::control_wheel(
     dt, -max_torque_, max_torque_,
     memory.speed_integral);
 
-  const double d_omega_ref_dt = (omega_ref - memory.previous_omega_ref) / dt;
+  const double raw_d_omega_ref_dt = (omega_ref - memory.previous_omega_ref) / dt;
+  const double accel_limit = max_torque_ / std::max(kSmall, feedforward_j_hat_);
+  const double d_omega_ref_dt = clamp(
+    raw_d_omega_ref_dt,
+    -accel_limit,
+    accel_limit);
   const double feedforward_torque = compute_feedforward(
-    d_omega_ref_dt, omega, memory.previous_effort, dt, memory);
+    d_omega_ref_dt, omega_ref);
 
   const double effort_command = clamp(
     velocity_torque + feedforward_torque,
@@ -292,24 +315,14 @@ double PMSMController::pi_step(
 
 double PMSMController::compute_feedforward(
   double d_omega_ref_dt,
-  double omega,
-  double electrical_torque,
-  double dt,
-  WheelMemory & memory)
+  double omega_ref)
 {
-  const double sign = (omega > 0.0) - (omega < 0.0);
-  const double friction_torque = feedforward_tc_ * sign + feedforward_b_hat_ * omega;
+  const double sign = (omega_ref > 0.0) - (omega_ref < 0.0);
+  const double friction_torque = feedforward_tc_ * sign + feedforward_b_hat_ * omega_ref;
   const double acceleration_torque = feedforward_j_hat_ * d_omega_ref_dt;
-  const double d_omega_dt = (omega - memory.previous_omega) / dt;
-
-  const double load_error =
-    electrical_torque - memory.load_torque_hat - feedforward_j_hat_ * d_omega_dt;
-  memory.load_torque_hat += feedforward_observer_gain_ * load_error * dt;
-  memory.load_torque_hat = clamp(memory.load_torque_hat, -max_torque_, max_torque_);
-  memory.previous_omega = omega;
 
   return clamp(
-    acceleration_torque + friction_torque + memory.load_torque_hat,
+    acceleration_torque + friction_torque,
     -max_torque_, max_torque_);
 }
 

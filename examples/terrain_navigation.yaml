@@ -1,0 +1,31 @@
+# Nav2 click-to-go demonstration world.
+# This is an engineering extension and is kept separate from formal terrain tests.
+
+world_name: "snowplow_navigation_demo"
+ground_size: 30.0
+
+terrain_zones:
+  - {type: sand,     x: -10, y: 0, width: 10, depth: 24, thickness: 0.02}
+  - {type: concrete, x: 0,   y: 0, width: 10, depth: 24, thickness: 0.015}
+  - {type: snow,     x: 10,  y: 0, width: 10, depth: 24, thickness: 0.02}
+
+# Static obstacles are shared by Gazebo and navigation_map_generator.py.
+obstacles:
+  - {type: barrier, x: -3.0, y: -2.5, z: 0, rpy: [0, 0, 0.00]}
+  - {type: barrier, x: -1.5, y: -2.5, z: 0, rpy: [0, 0, 0.00]}
+  - {type: barrier, x:  0.0, y: -2.5, z: 0, rpy: [0, 0, 0.00]}
+  - {type: barrier, x:  1.5, y: -2.5, z: 0, rpy: [0, 0, 0.00]}
+  - {type: barrier, x:  3.0, y: -2.5, z: 0, rpy: [0, 0, 0.00]}
+  - {type: wall,    x: -4.0, y:  3.5, z: 0, rpy: [0, 0, 1.57]}
+  - {type: wall,    x:  4.0, y:  3.5, z: 0, rpy: [0, 0, 1.57]}
+  - {type: box,     x: -2.0, y:  6.0, z: 0, rpy: [0, 0, 0.30]}
+  - {type: box,     x:  2.0, y:  6.0, z: 0, rpy: [0, 0, -0.30]}
+  - {type: cone,    x:  0.0, y:  8.0, z: 0, rpy: [0, 0, 0.00]}
+
+dynamic_friction_pad:
+  enabled: false
+
+visual_detail:
+  enabled: true
+  tiles: 5
+  edge_band: 0.18

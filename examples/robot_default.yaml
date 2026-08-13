@@ -19,16 +19,16 @@ chassis:
 control:
   current_i: 10.0
   current_p: 0.5
-  feedforward_b_hat: 1.25
+  feedforward_b_hat: 0.45
   feedforward_j_hat: 3.4
-  feedforward_tc: 0.25
+  feedforward_tc: 0.8
   update_rate: 1000
-  velocity_i: 3.0
-  velocity_p: 6.0
+  velocity_i: 4.0
+  velocity_p: 8.0
 drive:
   efficiency: 0.85
   gear_ratio: 50.0
-  max_torque: 30.0
+  max_torque: 45.0
   max_velocity: 3.0
   motor_inductance: 0.001
   motor_resistance: 0.5
@@ -73,10 +73,10 @@ tracks:
   contact_kp: 1000000.0
   contact_max_vel: 1.0
   contact_min_depth: 0.001
-  contact_mu1: 1.2
-  contact_mu2: 0.25
+  contact_mu1: 20.0
+  contact_mu2: 0.35
   contact_slip1: 0.0
-  contact_slip2: 0.2
+  contact_slip2: 0.35
   track_base: 0.9
   track_mass: 5.0
   track_radius: 0.15

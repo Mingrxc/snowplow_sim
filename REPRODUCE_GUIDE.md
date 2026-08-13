@@ -15,6 +15,9 @@ This repository now has one main simulation route:
 5. Run `operator_console.py`
 6. Use `terrain_spawn.py` + `gazebo_speed_test.py` for terrain tests
 
+The complete copy-and-run instructions, including keyboard control, dynamic
+friction, and Nav2 click-to-go navigation, are in `guidance/README.md`.
+
 Default project-plan terrains:
 
 - `concrete`
@@ -37,4 +40,7 @@ Default project-plan terrains:
 - `snowplow_control/`
 - `operator_console.py`
 - `gazebo_speed_test.py`
+- `snowplow_navigation/`
+- `launch_navigation.py`
+- `guidance/`
 

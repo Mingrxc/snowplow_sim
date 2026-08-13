@@ -2,10 +2,10 @@
 
 履带式智能扫雪车 Gazebo 仿真代码仓库。
 
-本目录是源码仓库根目录，主要说明代码结构、模块职责和维护边界。具体启动和实验步骤放在：
+本目录是完整实验项目和 Git 仓库根目录，主要说明代码结构、模块职责和维护边界。具体启动和实验步骤放在：
 
 ```text
-E:\zheng_snowplow_project\guidance\README.md
+guidance/README.md
 ```
 
 ## 当前主线
@@ -38,6 +38,8 @@ snowplow_sim/
 ├── launch_sim.py
 ├── operator_console.py
 ├── dynamic_friction_console.py
+├── navigation_map_generator.py
+├── launch_navigation.py
 ├── terrain_spawn.py
 ├── gazebo_speed_test.py
 ├── control_prototype.py
@@ -45,13 +47,13 @@ snowplow_sim/
 ├── benchmark_runner.py
 ├── cmd_vel_watchdog.py
 ├── examples/
+├── guidance/
 ├── docs/
 ├── snowplow_control/
+├── snowplow_navigation/
 ├── meshes/
-├── launch/
-├── output/
-├── results/
-└── figures/
+├── output/                 # 运行时生成，不提交
+└── results/                # 实验结果，不提交
 ```
 
 ## 核心模块
@@ -68,6 +70,7 @@ snowplow_sim/
 关键职责：
 
 - 生成车体、履带、扫雪铲和传感器连杆；
+- 当前默认外观为粉色车身、黑色可视化履带带面、传感器支架，便于 Gazebo 中观察；
 - 生成 `<ros2_control>` 硬件接口；
 - 加载 `gazebo_ros2_control/GazeboSystem`；
 - 配置左右前后履带代理轮 effort command interface；
@@ -159,6 +162,7 @@ Gazebo 适配口径：
 - 按键刷新运动命令，超时自动停车；
 - 发布 `/cmd_vel`；
 - 订阅 `/odom`；
+- 订阅 `/dynamic_drive/set`，允许运行时调整 `w/s` 线速度和 `a/d` 角速度；
 - 显示当前速度、位姿、地形信息和实际发布速度。
 
 默认遥控手感：
@@ -168,20 +172,69 @@ Gazebo 适配口径：
 - `j/l` 保留为原地左/右旋转备用键；
 - 默认线速度 `0.50 m/s`，默认角速度 `1.30 rad/s`。
 
-注意：当前模型用圆柱轮、四轮履带代理 effort 和接触参数近似履带。真实履带车通过左右履带差速和地面横向滑移转向，因此 `examples/robot_default.yaml` 中的 `tracks.contact_mu2` 和 `tracks.contact_slip2` 会明显影响 `a/d` 转向手感。该参数属于 Gazebo 工程近似，项目书未指定具体数值。
+注意：当前模型用圆柱轮、四轮履带代理 effort 和接触参数近似履带。真实履带车通过左右履带差速和地面横向滑移转向，因此 `examples/robot_default.yaml` 中的 `tracks.contact_mu2` 和 `tracks.contact_slip2` 会明显影响 `a/d` 转向手感。当前履带自身 `contact_mu1/contact_mu2` 设得较高，目的是让地块 `mu/mu2` 更直接地限制抓地能力。该参数属于 Gazebo 工程近似，项目书未指定具体数值。
 
 ### `dynamic_friction_console.py`
 
-动态摩擦地块控制台。
+动态调参控制台。
 
 关键职责：
 
 - 作为终端 3 运行；
-- 输入新的 `mu mu2`；
+- 输入新的 `mu mu2`，更新动态摩擦地块；
+- 输入 `speed vx [wz]` 或 `mu mu2 vx wz`，更新终端 2 的按键速度；
 - 发布到 `/dynamic_friction/set`；
+- 发布到 `/dynamic_drive/set`；
 - 订阅 `/dynamic_friction/state`，显示 Gazebo 插件当前生效配置。
 
-该脚本只用于扩展实验地块 `dynamic_pad`，不参与默认三地形测速结论。
+该脚本只用于扩展实验地块 `dynamic_pad` 和人工调试手感，不参与默认三地形测速结论。
+
+### `navigation_map_generator.py`
+
+根据导航场景 YAML 中的世界尺寸和静态障碍物生成 Nav2 占据栅格地图。
+
+关键边界：
+
+- Gazebo world 和 Nav2 map 共用 `examples/terrain_navigation.yaml`，避免手工维护两套障碍物位置；
+- 输出为 `output/maps/*.pgm` 和 `output/maps/*.yaml`，属于可再生成文件，不提交到 Git；
+- 地形摩擦不会写入占据栅格。Nav2 只把地图用于通行与避障，摩擦差异仍由 Gazebo 物理引擎处理。
+
+### `launch_navigation.py`
+
+导航演示入口。运行时生成地图并启动 `snowplow_navigation` 的 Nav2 节点，可选启动 RViz。
+
+它不负责启动 Gazebo；完整启动步骤见 `guidance/README.md`。
+
+### `snowplow_navigation/`
+
+ROS 2 Python 导航包，提供类似“点击地点后自动寻路”的工程演示：
+
+- `launch/navigation.launch.py`：编排 NavFn、MPPI、代价地图、行为树和速度平滑器；
+- `config/nav2_params.yaml`：履带式差速模型、车体 footprint、速度和避障参数；
+- `ground_truth_tf.py`：根据 Gazebo `/odom` 发布 `map -> odom -> base_link`；
+- `navigation_goal.py`：从命令行发送并监控一个 `NavigateToPose` 目标；
+- `rviz/navigation.rviz`：地图、激光、代价地图、路径及 Nav2 Goal 工具配置。
+
+数据链为：
+
+```text
+RViz Nav2 Goal / navigation_goal
+  -> NavFn global planner
+  -> MPPI local controller
+  -> velocity_smoother
+  -> /cmd_vel
+  -> snowplow_control
+  -> Gazebo
+```
+
+当前终点检查只要求位置误差不超过 `0.20 m`，不强迫履带车在终点原地对齐点击箭头朝向，避免到点后持续摆动。
+
+重要限制：
+
+- 当前定位使用 Gazebo 真值 `/odom`，只用于离线仿真验证，不代表实车定位方案；
+- `operator_console.py` 与 Nav2 都会发布 `/cmd_vel`，不得同时运行；
+- 导航演示是项目书“自主导航、智能避障、Gazebo 离线验证”的工程实现，不改变默认三地形测速实验语义；
+- 导航演示数据与 `gazebo_speed_test.py` 的正式地形测速结果必须分开保存和解释。
 
 ### `terrain_spawn.py`
 
@@ -252,12 +305,30 @@ Gazebo 适配口径：
 - `robot_small.yaml`
 - `terrain_multi.yaml`
 - `terrain_obstacles.yaml`
+- `terrain_navigation.yaml`（导航与避障演示专用）
 
 ### `docs/`
 
 调研、接口和历史设计说明。
 
 这些文档用于理解背景，不一定代表当前代码已经完全实现所有目标。
+
+### `guidance/`
+
+随仓库维护的实验操作文档：
+
+- `README.md`：从环境加载、编译、生成模型到键盘控制、动态摩擦和 Nav2 导航的完整步骤；
+- `TERMINAL_DISPLAY_FIELDS.md`：操作终端中速度、摩擦、接触状态等字段的含义。
+
+该目录属于项目交付内容，应与源码一同提交。文档使用仓库相对路径，克隆后无需依赖外层 `E:\zheng_snowplow_project` 目录。
+
+本机外层 `E:\zheng_snowplow_project\guidance/` 另保留一份方便访问的同步副本。仓库内本目录是 Git 主版本；修改指南后必须将其同步到外层副本。
+
+### `meshes/`
+
+SolidWorks 真实模型导出后的 Gazebo 网格入口。当前先提交 `meshes/README.md` 说明交付结构；后续视觉网格放入 `meshes/visual/`，简化碰撞网格放入 `meshes/collision/`。
+
+SolidWorks 原始装配体、COM 桥接脚本和本机 DLL 不属于仿真运行依赖，不随本仓库上传。具体接口规范见 `docs/SOLIDWORKS_MODEL_INTERFACE.md`。
 
 ## 生成目录
 
@@ -282,3 +353,22 @@ Gazebo 适配口径：
 6. 删除文件前先确认它是生成物、缓存、旧报告脚本或已被替代的路径。
 7. 每轮优化后至少运行语法检查；涉及控制器时还要编译 `snowplow_control`。
 8. 默认实验口径只使用 `concrete`、`sand`、`snow`；扩展地形必须显式标注。
+9. 手动键盘控制与 Nav2 导航互斥，任何时刻只允许一个 `/cmd_vel` 命令源。
+10. 真值定位导航演示不得表述为已经完成实车定位或 SLAM。
+
+## 仓库边界
+
+GitHub 上传范围就是本 `snowplow_sim/` 目录。仓库应包含：
+
+- Python 仿真、控制、实验和导航入口；
+- `snowplow_control/` 与 `snowplow_navigation/` ROS 2 包；
+- `examples/` 配置、`docs/` 设计文档、`guidance/` 实验步骤；
+- `meshes/` 的接口说明及后续导出的 Gazebo 网格；
+- README、许可证、修改记录和项目记忆。
+
+仓库不包含：
+
+- 外层项目计划书、其他研究资料和其他项目代码；
+- 本机 SolidWorks COM 桥接环境、DLL、探针输出；
+- `output/` 可再生成文件、Python 缓存、ROS 构建目录和运行日志；
+- `results/` 正式实验输出，除非以后明确选择发布某一组冻结结果。

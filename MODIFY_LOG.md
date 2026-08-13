@@ -466,3 +466,189 @@ python -B benchmark_runner.py --quick --output-dir results/smoke_benchmark
 - 默认世界仍保留 `concrete/sand/snow` 和 `dynamic_pad`。
 - 不改变控制器、机器人 URDF、动态摩擦插件或测速指标。
 - 需要重新生成 world 并重启 Gazebo。
+
+## 20. 摩擦表现增强与起步稳定修复
+
+问题现象：
+
+- 在三地形和动态摩擦地块中，修改 `mu/mu2` 后速度差异不够明显。
+- 将动态摩擦系数改到很高，例如 `20`，仍不明显。
+- 按 `w` 时偶发起步极慢，甚至出现短暂倒走。
+
+根因判断：
+
+- Gazebo 的 `mu/mu2` 主要表示最大抓地能力，不是“数值越大行驶阻力越大”的线性阻力。
+- 旧履带轮自身 `contact_mu1/contact_mu2` 较低，会封顶高地块摩擦，所以 `dynamic_pad` 设为 `20` 不会继续显著变化。
+- C++ 控制器旧的负载观测前馈基于测量速度和上一轮 effort，在 Gazebo effort 接口里可能在低速或换向时产生反向补偿，导致起步慢或短暂倒走。
+
+已处理：
+
+- `snowplow_control/src/pmsm_cascade_controller.cpp`
+  - 移除 Gazebo effort 适配层中的负载观测前馈项。
+  - 前馈改为根据参考速度方向计算，避免测量速度短暂反向时继续给反向扭矩。
+  - 限制参考加速度前馈峰值，减少起步瞬间扭矩尖峰。
+  - 默认控制器参数提高到 `max_torque=45.0`, `velocity_p=8.0`, `velocity_i=4.0`。
+- `urdf_generator.py`, `examples/robot_default.yaml`, `snowplow_control/config/snowplow_control.yaml`
+  - 同步上述控制参数。
+  - 履带纵向接触上限提高为 `contact_mu1=20.0`，让地块 `mu` 更能成为实际限制。
+  - 履带横向接触保持可滑移，当前为 `contact_mu2=0.35`, `contact_slip2=0.35`。
+- `world_generator.py`
+  - 拉开三地形摩擦差异：水泥更高、沙地中等、雪地更低。
+  - `dynamic_pad` 默认 `mu2` 从 `0.50` 调为 `0.45`。
+- `dynamic_friction_console.py`
+  - 默认 `mu2` 同步为 `0.45`。
+- `README.md`, `guidance/README.md`, `guidance/TERMINAL_DISPLAY_FIELDS.md`, `CODEX_MEMORY.md`
+  - 同步说明 `mu/mu2` 是抓地能力，不是线性阻力。
+  - 建议用低值如 `0.10 0.08` 观察明显低附着速度差异。
+
+影响判断：
+
+- 会改变 Gazebo 接触物理和控制器响应。
+- 正式 Gazebo 地形实验需要重新跑，旧结果不可混用。
+- 不改变 `/cmd_vel`、`/odom` 话题语义，也不改变 `gazebo_speed_test.py` 指标定义。
+
+## 21. 修复 `a/d` 转向被横向摩擦锁住
+
+问题现象：
+
+- 上一轮增强摩擦表现后，`a/d` 原地转向变差。
+
+根因判断：
+
+- 为了增强地块摩擦表现，上一轮把履带自身 `contact_mu2` 提到 `2.0`。
+- 履带差速转向需要横向擦滑；过高的横向摩擦会重新把车体锁住。
+
+已处理：
+
+- `urdf_generator.py`, `examples/robot_default.yaml`
+  - 保留纵向高抓地 `contact_mu1=20.0`。
+  - 将横向 `contact_mu2` 调为 `0.35`。
+  - 将 `contact_slip2` 调为 `0.35`。
+- `guidance/README.md`, `guidance/TERMINAL_DISPLAY_FIELDS.md`, `CODEX_MEMORY.md`
+  - 同步当前建议值和调参方向。
+
+影响判断：
+
+- 需要重新生成 URDF 并重启 Gazebo。
+- 不需要重新编译 C++ 控制器。
+- 正式 Gazebo 地形实验仍需要在最新参数下重新跑。
+
+## 22. 外观增强、雪地转向校准和动态速度调参
+
+问题现象：
+
+- 用户希望 Gazebo 中车体更容易识别：粉色车身、可见履带、传感器不悬浮。
+- 雪地中小车无法顺畅 `a/d` 旋转。
+- `w/s` 速度希望像动态摩擦一样由终端 3 运行时输入。
+
+已处理：
+
+- `urdf_generator.py`
+  - 新增 `chassis_pink`、`pink_light`、`track_edge` 材质。
+  - 默认车体改为粉色，上盖改为浅粉色。
+  - 两侧履带从单个灰色横梁改为上/下带面、前/后带面和履齿视觉件。
+  - 给 LiDAR、IMU、GPS、Camera 传感器链接增加支架视觉件，避免看起来悬浮。
+- `world_generator.py`
+  - 雪地参数校准为 `mu=0.30`, `mu2=0.16`，提高纵向可驱动性，同时保留低横向附着以支持履带差速转向。
+- `operator_console.py`
+  - 新增订阅 `/dynamic_drive/set`。
+  - 终端 2 收到 `[linear_speed, angular_speed]` 后动态更新 `w/s` 和 `a/d` 的速度步长。
+  - 默认速度上限调整为 `max_linear_speed=1.20`, `max_angular_speed=3.20`。
+- `dynamic_friction_console.py`
+  - 兼容原输入 `mu mu2`。
+  - 新增 `mu mu2 vx wz` 同时调摩擦和速度。
+  - 新增 `speed vx [wz]` 只调按键速度。
+- `README.md`, `guidance/README.md`, `guidance/TERMINAL_DISPLAY_FIELDS.md`, `CODEX_MEMORY.md`
+  - 同步本轮外观、动态速度和雪地转向说明。
+
+影响判断：
+
+- 外观改动不影响控制器接口和正式实验指标。
+- 雪地摩擦参数会影响 Gazebo 三地形结果，正式实验需要在最新 world 下重新跑，旧结果不可混用。
+- 动态速度调参属于人工调试/展示扩展，不作为项目书默认三地形测速结论。
+
+## 23. Nav2 点击目标自动寻路与避障
+
+目标：
+
+- 在 Gazebo 中增加类似“点击地图目标后自动规划并驶达”的功能。
+- 保留现有 `ros2_control + effort` 履带底盘主线。
+- 导航演示与正式三地形测速隔离。
+
+已处理：
+
+- 新增 `snowplow_navigation/`
+  - 使用 NavFn 生成全局路径。
+  - 使用 MPPI `DiffDrive` 模型跟踪路径和局部避障。
+  - 使用 local/global costmap 订阅 `/scan`。
+  - 使用 velocity smoother 输出 `/cmd_vel`。
+  - 提供 RViz `Nav2 Goal` 和命令行 `navigation_goal` 两种目标入口。
+- 新增 `examples/terrain_navigation.yaml`
+  - 保留沙地、水泥、雪地。
+  - 增加静态障碍物，专门用于导航绕障演示。
+- 新增 `navigation_map_generator.py`
+  - 从同一 YAML 生成 Nav2 PGM/YAML 地图，避免 Gazebo 世界与地图障碍位置分叉。
+- 新增 `launch_navigation.py`
+  - 自动生成地图并启动项目内自定义 Nav2 launch，可选 RViz。
+- 修改 `world_generator.py`
+  - 障碍物使用默认 `z=0` 时自动按照几何高度落地，避免半埋。
+- 修改 `launch_sim.py`
+  - 增加 `--headless`，支持无 Gazebo GUI 的自动验证。
+- 修复终点反复旋转
+  - 将 `SimpleGoalChecker` 改为 `PositionGoalChecker`，位置容差 `0.20 m`，不要求最终 yaw。
+- 更新 `README.md`、`guidance/README.md` 和 `CODEX_MEMORY.md`。
+
+验证：
+
+- `snowplow_control` 与 `snowplow_navigation` 均完成 colcon 构建。
+- Nav2 所有托管节点达到 `active`。
+- `/odom`、`/scan`、`/map` 和 `map -> odom -> base_link` 在线。
+- `joint_state_broadcaster` 和 `pmsm_controller` 为 `active`。
+- 实测车辆从障碍带一侧规划并绕行至另一侧，目标位置误差约 `0.18 m`。
+- 位置终点检查修复后，目标工具输出 `Goal succeeded`，不再因最终朝向反复旋转。
+
+影响判断：
+
+- 这是项目书自主导航、智能避障和 Gazebo 离线验证方向的工程扩展。
+- 当前使用 Gazebo 真值定位，不代表实车定位或 SLAM 已完成。
+- 不改变正式三地形测速参数、指标和结果目录语义。
+- `operator_console.py` 与 Nav2 不得同时运行。
+- 导航演示结果不能与正式测速结果混用。
+
+## 24. Git 仓库边界整合
+
+问题：
+
+- `snowplow_sim` 是实际需要上传的实验项目本体。
+- 实验启动指南此前位于仓库外的 `E:\zheng_snowplow_project\guidance`，GitHub 上传后会缺少关键操作文档。
+
+已处理：
+
+- 将外置 `guidance/README.md` 和 `guidance/TERMINAL_DISPLAY_FIELDS.md` 移入仓库内 `snowplow_sim/guidance/`。
+- 将根 README 和指南中的固定绝对路径改为仓库相对路径。
+- 在根 README 的项目结构与模块说明中加入 `guidance/`。
+- 保留外层 `papers/`、`tools/`、SolidWorks COM/DLL 文件在仓库外，它们不是当前仿真代码的运行依赖。
+
+影响判断：
+
+- 不改变仿真、控制、导航或实验语义。
+- GitHub 克隆后项目说明和实验步骤不再缺失。
+- 不引入生成地图、URDF、world、日志或实验中间产物。
+
+## 25. guidance 外层同步副本
+
+用户要求：
+
+- 在 `E:\zheng_snowplow_project\guidance/` 继续保留一份实验指南，方便从外层工作区直接打开。
+
+已处理：
+
+- 从仓库内 `snowplow_sim/guidance/` 创建外层同步副本。
+- 在 `CODEX_MEMORY.md` 中记录双位置维护规则。
+- 明确仓库内版本是 Git 主版本，外层版本仅作为本机方便访问的同步副本。
+
+影响判断：
+
+- 不改变代码、控制、导航或实验语义。
+- GitHub 仍只上传 `snowplow_sim/guidance/`。
+- 后续指南修改需要同步两处，避免本机指南和 GitHub 指南分叉。

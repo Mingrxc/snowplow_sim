@@ -172,9 +172,9 @@ def gazebo_environment() -> dict[str, str]:
     return env
 
 
-def start_gazebo(world_path: Path, verbose: bool) -> subprocess.Popen:
+def start_gazebo(world_path: Path, verbose: bool, headless: bool) -> subprocess.Popen:
     command = [
-        "gazebo",
+        "gzserver" if headless else "gazebo",
         "-s",
         "libgazebo_ros_init.so",
         "-s",
@@ -218,6 +218,7 @@ def main() -> None:
     parser.add_argument("--world", required=True, help="Generated Gazebo .world path.")
     parser.add_argument("--auto", action="store_true", help="Start Gazebo and spawn robot.")
     parser.add_argument("--verbose", action="store_true", help="Show Gazebo logs.")
+    parser.add_argument("--headless", action="store_true", help="Run gzserver without the Gazebo GUI.")
     parser.add_argument("--rviz", action="store_true", help="Start RViz2 as a helper window.")
     parser.add_argument("--no-controllers", action="store_true", help="Spawn without starting controllers.")
     parser.add_argument("--controller-timeout", type=float, default=60.0)
@@ -274,7 +275,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"[launch_sim] Starting Gazebo: {world_path}")
-    start_gazebo(world_path, args.verbose)
+    start_gazebo(world_path, args.verbose, args.headless)
 
     if args.rviz:
         subprocess.Popen(["rviz2"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

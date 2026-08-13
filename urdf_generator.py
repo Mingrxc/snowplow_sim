@@ -33,10 +33,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "track_separation": 0.65,
         "wheel_mass": 2.0,
         "track_mass": 5.0,
-        "contact_mu1": 1.20,
-        "contact_mu2": 0.25,
+        "contact_mu1": 20.00,
+        "contact_mu2": 0.35,
         "contact_slip1": 0.00,
-        "contact_slip2": 0.20,
+        "contact_slip2": 0.35,
         "contact_kp": 1000000.0,
         "contact_kd": 100.0,
         "contact_min_depth": 0.001,
@@ -93,18 +93,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "motor_rotor_inertia": 0.002,
         "gear_ratio": 50.0,
         "efficiency": 0.85,
-        "max_torque": 30.0,
+        "max_torque": 45.0,
         "max_velocity": 3.0,
     },
     "control": {
         "enable_ros2_control": True,
-        "velocity_p": 6.0,
-        "velocity_i": 3.0,
+        "velocity_p": 8.0,
+        "velocity_i": 4.0,
         "current_p": 0.5,
         "current_i": 10.0,
         "feedforward_j_hat": 3.4,
-        "feedforward_tc": 0.25,
-        "feedforward_b_hat": 1.25,
+        "feedforward_tc": 0.80,
+        "feedforward_b_hat": 0.45,
         "feedforward_observer_gain": 50.0,
         "update_rate": 1000,
     },
@@ -150,6 +150,9 @@ def xacro_header(robot_name: str) -> str:
   <material name="black"><color rgba="0.05 0.05 0.06 1"/></material>
   <material name="dark_grey"><color rgba="0.22 0.24 0.26 1"/></material>
   <material name="track_grey"><color rgba="0.12 0.13 0.14 1"/></material>
+  <material name="track_edge"><color rgba="0.04 0.04 0.045 1"/></material>
+  <material name="chassis_pink"><color rgba="1.0 0.42 0.66 1"/></material>
+  <material name="pink_light"><color rgba="1.0 0.72 0.84 1"/></material>
   <material name="steel_blue"><color rgba="0.38 0.48 0.60 1"/></material>
   <material name="orange"><color rgba="1.0 0.45 0.05 1"/></material>
   <material name="silver"><color rgba="0.78 0.80 0.82 1"/></material>
@@ -176,7 +179,7 @@ def xacro_chassis(chassis: dict[str, Any], tracks: dict[str, Any], detailed: boo
     <visual name="upper_deck">
       <origin xyz="0 0 {height / 2.0 + 0.06:.4f}" rpy="0 0 0"/>
       <geometry><box size="{length * 0.82:.4f} {width * 0.72:.4f} {height * 0.14:.4f}"/></geometry>
-      <material name="steel_blue"/>
+      <material name="pink_light"/>
     </visual>
     <visual name="front_light_left">
       <origin xyz="{length / 2.0 + 0.02:.4f} {width * 0.22:.4f} 0.03" rpy="0 1.5708 0"/>
@@ -195,7 +198,7 @@ def xacro_chassis(chassis: dict[str, Any], tracks: dict[str, Any], detailed: boo
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>{geometry}</geometry>
-      <material name="dark_grey"/>
+      <material name="chassis_pink"/>
     </visual>{detail}
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -240,6 +243,11 @@ def xacro_tracks(tracks: dict[str, Any], chassis_height: float) -> str:
     wheel_mass = float(tracks["wheel_mass"])
     beam_mass = max(0.5, float(tracks.get("track_mass", 5.0)) - 2.0 * wheel_mass)
     wheel_z = -(chassis_height / 2.0) + radius / 3.0
+    belt_thickness = radius * 0.24
+    belt_width = width * 1.20
+    upper_z = wheel_z + radius * 0.72
+    lower_z = wheel_z - radius * 0.72
+    cleat_count = 7
     parts: list[str] = []
 
     for side, y_offset in (("left", separation / 2.0), ("right", -separation / 2.0)):
@@ -258,13 +266,39 @@ def xacro_tracks(tracks: dict[str, Any], chassis_height: float) -> str:
 """)
 
         beam = f"{side}_track_beam"
+        cleats = []
+        for index in range(cleat_count):
+            x_offset = -base / 2.0 + index * base / (cleat_count - 1)
+            cleats.append(
+                f"""
+    <visual name="cleat_{index}">
+      <origin xyz="{x_offset:.4f} 0 {upper_z + belt_thickness * 0.75:.4f}" rpy="0 0 0"/>
+      <geometry><box size="{base / 28.0:.4f} {belt_width * 1.04:.4f} {belt_thickness * 0.7:.4f}"/></geometry>
+      <material name="track_edge"/>
+    </visual>"""
+            )
         parts.append(f"""
   <link name="{beam}">
-    <visual>
-      <origin xyz="0 0 {wheel_z:.4f}" rpy="0 0 0"/>
-      <geometry><box size="{base:.4f} {width:.4f} {radius * 1.15:.4f}"/></geometry>
+    <visual name="upper_belt">
+      <origin xyz="0 0 {upper_z:.4f}" rpy="0 0 0"/>
+      <geometry><box size="{base:.4f} {belt_width:.4f} {belt_thickness:.4f}"/></geometry>
       <material name="track_grey"/>
     </visual>
+    <visual name="lower_belt">
+      <origin xyz="0 0 {lower_z:.4f}" rpy="0 0 0"/>
+      <geometry><box size="{base:.4f} {belt_width:.4f} {belt_thickness:.4f}"/></geometry>
+      <material name="track_edge"/>
+    </visual>
+    <visual name="front_belt_face">
+      <origin xyz="{base / 2.0:.4f} 0 {wheel_z:.4f}" rpy="0 0 0"/>
+      <geometry><box size="{belt_thickness:.4f} {belt_width:.4f} {radius * 1.45:.4f}"/></geometry>
+      <material name="track_grey"/>
+    </visual>
+    <visual name="rear_belt_face">
+      <origin xyz="{-base / 2.0:.4f} 0 {wheel_z:.4f}" rpy="0 0 0"/>
+      <geometry><box size="{belt_thickness:.4f} {belt_width:.4f} {radius * 1.45:.4f}"/></geometry>
+      <material name="track_grey"/>
+    </visual>{"".join(cleats)}
     <inertial>
       <mass value="{beam_mass:.3f}"/>
       <inertia {inertia_box(beam_mass, base, width, radius * 1.15)}/>
@@ -330,14 +364,30 @@ def xacro_blade(blade: dict[str, Any]) -> str:
 """
 
 
-def fixed_sensor_link(name: str, parent: str, xyz: tuple[float, float, float], geometry: str, material: str) -> str:
+def fixed_sensor_link(
+    name: str,
+    parent: str,
+    xyz: tuple[float, float, float],
+    geometry: str,
+    material: str,
+    support_to_z: float | None = None,
+) -> str:
+    support_visual = ""
+    if support_to_z is not None and xyz[2] > support_to_z:
+        support_height = max(0.02, xyz[2] - support_to_z)
+        support_visual = f"""
+    <visual name="support">
+      <origin xyz="0 0 {-support_height / 2.0:.4f}" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.012" length="{support_height:.4f}"/></geometry>
+      <material name="silver"/>
+    </visual>"""
     return f"""
   <link name="{name}">
-    <visual>
+    <visual name="body">
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>{geometry}</geometry>
       <material name="{material}"/>
-    </visual>
+    </visual>{support_visual}
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>{geometry}</geometry>
@@ -355,8 +405,9 @@ def fixed_sensor_link(name: str, parent: str, xyz: tuple[float, float, float], g
 """
 
 
-def xacro_sensors(sensors: dict[str, Any]) -> str:
+def xacro_sensors(sensors: dict[str, Any], chassis_height: float) -> str:
     parts: list[str] = []
+    support_to_z = chassis_height / 2.0
     lidar = sensors.get("lidar", {})
     if bool_enabled(lidar, True):
         parts.append(
@@ -366,6 +417,7 @@ def xacro_sensors(sensors: dict[str, Any]) -> str:
                 (lidar["x"], lidar["y"], lidar["z"]),
                 '<cylinder radius="0.05" length="0.04"/>',
                 "yellow",
+                support_to_z,
             )
         )
     imu = sensors.get("imu", {})
@@ -377,6 +429,7 @@ def xacro_sensors(sensors: dict[str, Any]) -> str:
                 (imu["x"], imu["y"], imu["z"]),
                 '<box size="0.04 0.04 0.03"/>',
                 "white",
+                support_to_z,
             )
         )
     gps = sensors.get("gps", {})
@@ -388,6 +441,7 @@ def xacro_sensors(sensors: dict[str, Any]) -> str:
                 (gps["x"], gps["y"], gps["z"]),
                 '<sphere radius="0.03"/>',
                 "white",
+                support_to_z,
             )
         )
     camera = sensors.get("camera", {})
@@ -399,6 +453,7 @@ def xacro_sensors(sensors: dict[str, Any]) -> str:
                 (camera["x"], camera["y"], camera["z"]),
                 '<box size="0.06 0.04 0.04"/>',
                 "dark_grey",
+                support_to_z,
             )
         )
     return "".join(parts)
@@ -429,7 +484,7 @@ def ros2_control_effort_joint(name: str, max_torque: float) -> str:
 def xacro_ros2_control(cfg: dict[str, Any]) -> str:
     if not cfg.get("control", {}).get("enable_ros2_control", True):
         return ""
-    max_torque = float(cfg["drive"].get("max_torque", 30.0))
+    max_torque = float(cfg["drive"].get("max_torque", 45.0))
     joint_blocks = "\n".join(
         ros2_control_effort_joint(joint, max_torque)
         for joint in (
@@ -556,10 +611,10 @@ def xacro_gazebo_plugins(cfg: dict[str, Any], control_yaml: Path) -> str:
 """)
 
     tracks = cfg.get("tracks", {})
-    contact_mu1 = float(tracks.get("contact_mu1", 1.20))
-    contact_mu2 = float(tracks.get("contact_mu2", 0.25))
+    contact_mu1 = float(tracks.get("contact_mu1", 20.00))
+    contact_mu2 = float(tracks.get("contact_mu2", 0.35))
     contact_slip1 = float(tracks.get("contact_slip1", 0.00))
-    contact_slip2 = float(tracks.get("contact_slip2", 0.20))
+    contact_slip2 = float(tracks.get("contact_slip2", 0.35))
     contact_kp = float(tracks.get("contact_kp", 1000000.0))
     contact_kd = float(tracks.get("contact_kd", 100.0))
     contact_min_depth = float(tracks.get("contact_min_depth", 0.001))
@@ -610,16 +665,16 @@ pmsm_controller:
     wheel_radius: {tracks['track_radius']}
     track_separation: {tracks['track_separation']}
     wheel_torque_constant: {drive.get('motor_torque_constant', 0.06)}
-    max_torque: {drive.get('max_torque', 30.0)}
+    max_torque: {drive.get('max_torque', 45.0)}
 
-    velocity_p: {control.get('velocity_p', 6.0)}
-    velocity_i: {control.get('velocity_i', 3.0)}
+    velocity_p: {control.get('velocity_p', 8.0)}
+    velocity_i: {control.get('velocity_i', 4.0)}
     current_p: {control.get('current_p', 0.5)}
     current_i: {control.get('current_i', 10.0)}
 
     feedforward_j_hat: {control.get('feedforward_j_hat', 3.4)}
-    feedforward_b_hat: {control.get('feedforward_b_hat', 1.25)}
-    feedforward_tc: {control.get('feedforward_tc', 0.25)}
+    feedforward_b_hat: {control.get('feedforward_b_hat', 0.45)}
+    feedforward_tc: {control.get('feedforward_tc', 0.80)}
     feedforward_observer_gain: {control.get('feedforward_observer_gain', 50.0)}
 """
 
@@ -635,7 +690,7 @@ def generate_urdf(cfg: dict[str, Any], output_dir: str | Path) -> Path:
         xacro_chassis(cfg["chassis"], cfg["tracks"], detailed),
         xacro_tracks(cfg["tracks"], float(cfg["chassis"]["height"])),
         xacro_blade(cfg.get("blade", {})),
-        xacro_sensors(cfg.get("sensors", {})),
+        xacro_sensors(cfg.get("sensors", {}), float(cfg["chassis"]["height"])),
         xacro_ros2_control(cfg),
         xacro_gazebo_plugins(cfg, control_yaml),
         "\n</robot>\n",
